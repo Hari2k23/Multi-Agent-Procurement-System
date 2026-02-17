@@ -1,0 +1,124 @@
+{
+  "NextGen Components": {
+    "total_orders": 2,
+    "total_mismatches": 2,
+    "mismatch_incidents": [
+      {
+        "po_number": "PO-ITM001-20240115",
+        "date": "2026-01-26",
+        "discrepancy_percent": 2.17,
+        "financial_impact": 390.0,
+        "action_taken": "escalate_to_manager"
+      },
+      {
+        "po_number": "PO-ITM001-20240115",
+        "date": "2026-01-26",
+        "discrepancy_percent": 2.17,
+        "financial_impact": 390.0,
+        "action_taken": "escalate_to_manager"
+      }
+    ]
+  },
+  "Test Supplier": {
+    "total_orders": 9,
+    "total_mismatches": 9,
+    "mismatch_incidents": [
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "escalate_to_manager"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "escalate_to_manager"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "escalate_to_manager"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      },
+      {
+        "po_number": "PO-INT-TEST-002",
+        "date": "2026-02-15",
+        "discrepancy_percent": 10.0,
+        "financial_impact": 780.0,
+        "action_taken": "reject_shipment"
+      }
+    ]
+  },
+  "QualitySupplies Ltd": {
+    "total_orders": 1,
+    "total_mismatches": 1,
+    "mismatch_incidents": [
+      {
+        "po_number": "PO-QUAL-TEST-003",
+        "date": "2026-02-15",
+        "discrepancy_percent": 0,
+        "financial_impact": 0.0,
+        "action_taken": "reject_shipment"
+      }
+    ]
+  },
+  "Midtown Industrial": {
+    "total_orders": 2,
+    "total_mismatches": 2,
+    "mismatch_incidents": [
+      {
+        "po_number": "PO-ESC-TEST-006",
+        "date": "2026-02-15",
+        "discrepancy_percent": 5.0,
+        "financial_impact": 5000.0,
+        "action_taken": "escalate_to_manager"
+      },
+      {
+        "po_number": "PO-ESC-TEST-006",
+        "date": "2026-02-15",
+        "discrepancy_percent": 5.0,
+        "financial_impact": 5000.0,
+        "action_taken": "escalate_to_manager"
+      }
+    ]
+  }
+}

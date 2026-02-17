@@ -1,0 +1,9 @@
+{
+  "1": {
+    "supplier_email": "s@test.com",
+    "processed_at": "2026-02-12 20:01:02",
+    "subject": "Quote",
+    "item_code": null,
+    "email_type": "quote"
+  }
+}

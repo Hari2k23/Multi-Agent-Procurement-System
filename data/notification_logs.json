@@ -1,0 +1,695 @@
+{
+  "verification_complete_20260126_204951": {
+    "notification_id": "verification_complete_20260126_204951",
+    "event_type": "verification_complete",
+    "sent_at": "2026-01-26 20:49:51",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-ITM001-20240115 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260126_204954": {
+    "notification_id": "rfq_sent_20260126_204954",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-01-26 20:49:54",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260126_204958": {
+    "notification_id": "quote_received_20260126_204958",
+    "event_type": "quote_received",
+    "sent_at": "2026-01-26 20:49:58",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260126_205059": {
+    "notification_id": "rfq_sent_20260126_205059",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-01-26 20:50:59",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260126_205103": {
+    "notification_id": "quote_received_20260126_205103",
+    "event_type": "quote_received",
+    "sent_at": "2026-01-26 20:51:03",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260126_205159": {
+    "notification_id": "rfq_sent_20260126_205159",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-01-26 20:51:59",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260126_205202": {
+    "notification_id": "quote_received_20260126_205202",
+    "event_type": "quote_received",
+    "sent_at": "2026-01-26 20:52:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "budget_exceeded_20260212_200009": {
+    "notification_id": "budget_exceeded_20260212_200009",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:00:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "ALERT: Budget Exceeded - Item",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200009": {
+    "notification_id": "rfq_sent_20260212_200009",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:00:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - Test Item",
+    "status": "failed",
+    "error_message": "Connection failed"
+  },
+  "po_created_20260212_200009": {
+    "notification_id": "po_created_20260212_200009",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:00:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Purchase Order Created - PO",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200009": {
+    "notification_id": "quote_received_20260212_200009",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:00:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - Test Item",
+    "status": "sent",
+    "error_message": null
+  },
+  "budget_exceeded_20260212_200102": {
+    "notification_id": "budget_exceeded_20260212_200102",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:01:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "ALERT: Budget Exceeded - Item",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200102": {
+    "notification_id": "rfq_sent_20260212_200102",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:01:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - Test Item",
+    "status": "failed",
+    "error_message": "Connection failed"
+  },
+  "po_created_20260212_200102": {
+    "notification_id": "po_created_20260212_200102",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:01:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Purchase Order Created - PO",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200102": {
+    "notification_id": "quote_received_20260212_200102",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:01:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - Test Item",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200258": {
+    "notification_id": "rfq_sent_20260212_200258",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:02:58",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "budget_exceeded_20260212_200258": {
+    "notification_id": "budget_exceeded_20260212_200258",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:02:58",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "po_created_20260212_200258": {
+    "notification_id": "po_created_20260212_200258",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:02:58",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200258": {
+    "notification_id": "quote_received_20260212_200258",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:02:58",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200259": {
+    "notification_id": "rfq_sent_20260212_200259",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:02:59",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "failed",
+    "error_message": "Fail"
+  },
+  "rfq_sent_20260212_200502": {
+    "notification_id": "rfq_sent_20260212_200502",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:05:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "failed",
+    "error_message": "Fail"
+  },
+  "budget_exceeded_20260212_200502": {
+    "notification_id": "budget_exceeded_20260212_200502",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:05:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "po_created_20260212_200502": {
+    "notification_id": "po_created_20260212_200502",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:05:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200502": {
+    "notification_id": "quote_received_20260212_200502",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:05:02",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200525": {
+    "notification_id": "rfq_sent_20260212_200525",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:05:25",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "failed",
+    "error_message": "Fail"
+  },
+  "budget_exceeded_20260212_200525": {
+    "notification_id": "budget_exceeded_20260212_200525",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:05:25",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "po_created_20260212_200525": {
+    "notification_id": "po_created_20260212_200525",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:05:25",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200525": {
+    "notification_id": "quote_received_20260212_200525",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:05:25",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260212_200609": {
+    "notification_id": "rfq_sent_20260212_200609",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-12 20:06:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "failed",
+    "error_message": "Fail"
+  },
+  "budget_exceeded_20260212_200609": {
+    "notification_id": "budget_exceeded_20260212_200609",
+    "event_type": "budget_exceeded",
+    "sent_at": "2026-02-12 20:06:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "po_created_20260212_200609": {
+    "notification_id": "po_created_20260212_200609",
+    "event_type": "po_created",
+    "sent_at": "2026-02-12 20:06:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260212_200609": {
+    "notification_id": "quote_received_20260212_200609",
+    "event_type": "quote_received",
+    "sent_at": "2026-02-12 20:06:09",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Subject",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203030": {
+    "notification_id": "verification_complete_20260213_203030",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:30",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203033": {
+    "notification_id": "verification_complete_20260213_203033",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:33",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203036": {
+    "notification_id": "verification_complete_20260213_203036",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:36",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203040": {
+    "notification_id": "verification_complete_20260213_203040",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:40",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203043": {
+    "notification_id": "verification_complete_20260213_203043",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:43",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203046": {
+    "notification_id": "verification_complete_20260213_203046",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:46",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203049": {
+    "notification_id": "verification_complete_20260213_203049",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:49",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-001 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260213_203052": {
+    "notification_id": "verification_complete_20260213_203052",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-13 20:30:52",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-2024-002 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_145011": {
+    "notification_id": "verification_complete_20260215_145011",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 14:50:11",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_145805": {
+    "notification_id": "verification_complete_20260215_145805",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 14:58:05",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_151926": {
+    "notification_id": "verification_complete_20260215_151926",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:19:26",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_152027": {
+    "notification_id": "verification_complete_20260215_152027",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:20:27",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_152029": {
+    "notification_id": "mismatch_email_to_supplier_20260215_152029",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 15:20:29",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. d2e1a72fcca58-824c6b9a661sm7184626b3a.50 - gsmtp')}"
+  },
+  "verification_complete_20260215_152134": {
+    "notification_id": "verification_complete_20260215_152134",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:21:34",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_152136": {
+    "notification_id": "mismatch_email_to_supplier_20260215_152136",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 15:21:36",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. 98e67ed59e1d1-3567e9dff38sm12681797a91.7 - gsmtp')}"
+  },
+  "verification_complete_20260215_152249": {
+    "notification_id": "verification_complete_20260215_152249",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:22:49",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_152251": {
+    "notification_id": "mismatch_email_to_supplier_20260215_152251",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 15:22:51",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. 98e67ed59e1d1-35662e6c300sm16735741a91.7 - gsmtp')}"
+  },
+  "verification_complete_20260215_154123": {
+    "notification_id": "verification_complete_20260215_154123",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:41:23",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-ITM001-20260215_154119 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_154126": {
+    "notification_id": "verification_complete_20260215_154126",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 15:41:26",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_154128": {
+    "notification_id": "mismatch_email_to_supplier_20260215_154128",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 15:41:28",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. d9443c01a7336-2ad1a73b0fesm41389695ad.38 - gsmtp')}"
+  },
+  "verification_complete_20260215_160646": {
+    "notification_id": "verification_complete_20260215_160646",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:06:46",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-ITM001-20260215_160642 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_160649": {
+    "notification_id": "verification_complete_20260215_160649",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:06:49",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_160653": {
+    "notification_id": "mismatch_email_to_supplier_20260215_160653",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 16:06:53",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. d9443c01a7336-2ad1a6f9d34sm42176815ad.11 - gsmtp')}"
+  },
+  "verification_complete_20260215_163714": {
+    "notification_id": "verification_complete_20260215_163714",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:37:14",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-ITM001-20260215_163711 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_163718": {
+    "notification_id": "verification_complete_20260215_163718",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:37:18",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-INT-TEST-002 - FAIL",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_163722": {
+    "notification_id": "mismatch_email_to_supplier_20260215_163722",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 16:37:22",
+    "recipients": [
+      "unknown"
+    ],
+    "subject": "Discrepancy in PO PO-INT-TEST-002",
+    "status": "failed",
+    "error_message": "{'unknown': (553, b'5.1.3 The recipient address <unknown> is not a valid RFC 5321 address. For\\n5.1.3 more information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. d9443c01a7336-2ad1a73200asm42662565ad.36 - gsmtp')}"
+  },
+  "verification_complete_20260215_165225": {
+    "notification_id": "verification_complete_20260215_165225",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:52:25",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-QUAL-TEST-003 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "verification_complete_20260215_165420": {
+    "notification_id": "verification_complete_20260215_165420",
+    "event_type": "verification_complete",
+    "sent_at": "2026-02-15 16:54:20",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Verification Complete - PO PO-QUAL-TEST-003 - PASS",
+    "status": "sent",
+    "error_message": null
+  },
+  "mismatch_email_to_supplier_20260215_165423": {
+    "notification_id": "mismatch_email_to_supplier_20260215_165423",
+    "event_type": "mismatch_email_to_supplier",
+    "sent_at": "2026-02-15 16:54:23",
+    "recipients": [
+      "quality@example.com"
+    ],
+    "subject": "Discrepancy in PO PO-QUAL-TEST-003",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260215_185227": {
+    "notification_id": "rfq_sent_20260215_185227",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-02-15 18:52:27",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - M8 Screws",
+    "status": "sent",
+    "error_message": null
+  },
+  "po_approved_20260215_185232": {
+    "notification_id": "po_approved_20260215_185232",
+    "event_type": "po_approved",
+    "sent_at": "2026-02-15 18:52:32",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "Purchase Order Approved - PO-ITM001-20260215_185228",
+    "status": "sent",
+    "error_message": null
+  }
+}
