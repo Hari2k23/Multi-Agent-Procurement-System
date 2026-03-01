@@ -5,7 +5,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.base_agent import BaseAgent
 from utils.groq_helper import groq
 from utils.logger import log_info, log_error
-from duckduckgo_search import DDGS   # type: ignore
+try:
+    from ddgs import DDGS  # type: ignore  # new package name
+except ImportError:
+    from duckduckgo_search import DDGS  # type: ignore  # legacy fallback
 import requests
 from bs4 import BeautifulSoup
 import json

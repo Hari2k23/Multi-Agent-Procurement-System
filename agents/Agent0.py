@@ -210,6 +210,7 @@ Return ONLY the JSON object, no explanation."""
         self.last_quantity = rec.recommended_quantity
         self.state = "awaiting_supplier_approval"
         
+        question = self._generate_supplier_approval_question()
         return f"""### Inventory Analysis: {rec.item_name}
 **Primary Recommendation**: Procure **{rec.recommended_quantity} units**
 **Urgency Level**: {rec.urgency}
@@ -218,7 +219,12 @@ Return ONLY the JSON object, no explanation."""
 {rec.reason}
 
 ---
-{self._generate_supplier_approval_question()}"""
+{question}
+
+===
+Yes, find me suppliers
+No, not right now
+Check a different item"""
 
     def _handle_supplier_request(self, user_input: str, suggested_item_name: str = None) -> str:
         """Handle explicit supplier search request for a specific item."""
@@ -284,7 +290,12 @@ Return ONLY the JSON object, no explanation."""
 {suppliers_text}
 
 ---
-**Verification**: {approval_question}"""
+{approval_question}
+
+===
+Send RFQs to all suppliers
+Send to low risk suppliers only
+Save this RFQ for later"""
 
     def _generate_rfq_approval_question(self) -> str:
         """Generate natural language approval question using LLM."""
@@ -958,7 +969,7 @@ Generate ONLY the question text."""
             return f"Purchase Order {po_number} rejected and logged."
 
     def _handle_acknowledgment(self) -> str:
-        """Handle casual acknowledgments naturally"""
+        """Handle casual acknowledgments with context-aware follow-up suggestions."""
         import random
         responses = [
             "Sure thing! Anything else I can help with?",
@@ -967,8 +978,36 @@ Generate ONLY the question text."""
             "No problem. I'm here when you need me.",
             "Sounds good. What else can I do for you?",
         ]
+        body = random.choice(responses)
 
-        return random.choice(responses)
+        # Context-aware suggestions shown as followup pills
+        if self.state == "awaiting_supplier_approval" and self.last_item_name:
+            suggestions = [
+                f"Yes, find suppliers for {self.last_item_name}",
+                "Show me pending RFQs",
+                "Check a different item",
+            ]
+        elif self.state == "awaiting_rfq_approval" and self.last_item_name:
+            suggestions = [
+                f"Send RFQs to all suppliers",
+                f"Send only to low risk suppliers",
+                "Save this RFQ for later",
+            ]
+        elif self.state in ("awaiting_quotes", "quotes_collected"):
+            suggestions = [
+                "Check inbox for quotes",
+                "Analyze quotes now",
+                "Show pending RFQs",
+            ]
+        else:
+            suggestions = [
+                "Check inventory status",
+                "Find suppliers for an item",
+                "Show pending RFQs",
+            ]
+
+        pills_text = "\n".join(suggestions)
+        return f"{body}\n\n===\n{pills_text}"
 
     def _show_help(self) -> str:
         """Display help message"""

@@ -1,30 +1,62 @@
-"""
-Multi-Agent Procurement System - Streamlit UI
-Production-ready interface for AI-powered procurement automation
-"""
-
-import streamlit as st
-import pandas as pd
-import json
 import os
-from datetime import datetime, timedelta
-import plotly.graph_objects as go
-import plotly.express as px
-from pathlib import Path
 import sys
+import warnings
+import signal as _signal_mod
+
+# ── 1. Set crewai telemetry opt-out BEFORE anything is imported ────────────────
+os.environ['CREWAI_TELEMETRY_OPT_OUT'] = 'true'
+os.environ['OTEL_SDK_DISABLED'] = 'true'
+os.environ['ANONYMIZED_TELEMETRY'] = 'false'
+
+# ── 2. Monkey-patch signal.signal to silently ignore ValueError in worker threads
+#    (crewai telemetry tries to register SIGTERM/SIGINT — only works in main thread)
+_orig_signal = _signal_mod.signal
+def _safe_signal(sig, handler):
+    try:
+        return _orig_signal(sig, handler)
+    except (ValueError, OSError):
+        pass  # not in main thread — silently skip
+_signal_mod.signal = _safe_signal
+
+# ── 3. Suppress all noisy warnings from third-party libs ────────────────────
+warnings.filterwarnings('ignore', module='statsmodels.*')        # catches ValueWarning/FutureWarning/UserWarning
+warnings.filterwarnings('ignore', module='duckduckgo_search.*')  # package rename RuntimeWarning
+warnings.filterwarnings('ignore', message='.*duckduckgo.*')      # belt-and-suspenders
+warnings.filterwarnings('ignore', category=ResourceWarning)
+warnings.filterwarnings('ignore', message='.*renamed to.*ddgs.*')
+warnings.filterwarnings('ignore', message='.*date index.*frequency.*')
+warnings.filterwarnings('ignore', message='.*No supported index.*')
+try:
+    from statsmodels.tools.sm_exceptions import ValueWarning as _StatsVW
+    warnings.filterwarnings('ignore', category=_StatsVW)
+except ImportError:
+    pass
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from agents.Agent0 import MasterOrchestrator
-from utils.logger import logger, log_error
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
+import json
+import time
+from datetime import datetime
+import plotly.graph_objects as go
+import plotly.express as px
+
+from utils.logger import log_error
 
 # Page configuration
 st.set_page_config(
-    page_title="Multi-Agent Procurement System",
+    page_title="ProcureAI",
+    page_icon='⚡',
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ── Session state: track sidebar collapse for the toggle button ──────────────
+if 'sidebar_open' not in st.session_state:
+    st.session_state.sidebar_open = True
 
 # Custom CSS for premium glassmorphism design
 st.markdown("""
@@ -192,13 +224,94 @@ st.markdown("""
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(15, 22, 41, 0.95) 0%, rgba(10, 14, 39, 0.95) 100%);
-        backdrop-filter: blur(20px);
-        border-right: 1px solid rgba(46, 134, 171, 0.2);
+        background: linear-gradient(180deg, rgba(12, 18, 38, 0.97) 0%, rgba(8, 12, 32, 0.98) 100%);
+        backdrop-filter: blur(24px);
+        border-right: 1px solid rgba(46, 134, 171, 0.15);
     }
-    
+
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
         color: #E8E9ED;
+    }
+
+    /* Sidebar divider lines */
+    [data-testid="stSidebar"] hr {
+        border: none !important;
+        height: 1px !important;
+        background: linear-gradient(90deg, transparent, rgba(46, 134, 171, 0.25), transparent) !important;
+        margin: 16px 0 !important;
+    }
+
+    /* Sidebar radio nav — premium nav items */
+    [data-testid="stSidebar"] [data-testid="stRadio"] > div[role="radiogroup"] {
+        gap: 2px !important;
+        padding: 0 4px !important;
+    }
+
+    /* Ensure the widget label stays hidden */
+    [data-testid="stSidebar"] [data-testid="stRadio"] > label,
+    [data-testid="stSidebar"] [data-testid="stRadio"] > div:first-child:not([role="radiogroup"]) {
+        display: none !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label {
+        display: flex !important;
+        align-items: center !important;
+        padding: 10px 16px 10px 18px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border: 1px solid transparent !important;
+        margin: 0 !important;
+        background: transparent !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+
+    /* Hidden radio circle */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+        display: none !important;
+    }
+
+    /* Nav text default */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label p {
+        color: #546178 !important;
+        font-size: 13.5px !important;
+        font-weight: 500 !important;
+        transition: all 0.25s ease !important;
+        margin: 0 !important;
+        letter-spacing: 0.01em !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }
+
+    /* Hover */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:hover {
+        background: rgba(46, 134, 171, 0.06) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:hover p {
+        color: #8FA4B8 !important;
+    }
+
+    /* Active / Selected */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+        background: linear-gradient(135deg, rgba(6, 214, 160, 0.08) 0%, rgba(46, 134, 171, 0.06) 100%) !important;
+        border-color: rgba(6, 214, 160, 0.12) !important;
+    }
+    /* Green left accent bar with glow */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked)::before {
+        content: '' !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 20% !important;
+        bottom: 20% !important;
+        width: 3px !important;
+        border-radius: 0 4px 4px 0 !important;
+        background: #06D6A0 !important;
+        box-shadow: 0 0 10px rgba(6, 214, 160, 0.5) !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) p {
+        color: #06D6A0 !important;
+        font-weight: 600 !important;
     }
     
     /* Enhanced input fields */
@@ -314,7 +427,471 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
+
+    /* ── Sidebar toggle button — always visible in top-left ── */
+    .sidebar-toggle-btn {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 99999;
+        background: rgba(20, 30, 60, 0.85);
+        backdrop-filter: blur(16px);
+        border: 1.5px solid rgba(46, 134, 171, 0.45);
+        border-radius: 12px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+        color: #A0C4D8;
+        font-size: 18px;
+    }
+    .sidebar-toggle-btn:hover {
+        background: rgba(46, 134, 171, 0.3);
+        border-color: #06D6A0;
+        color: #06D6A0;
+        box-shadow: 0 0 18px rgba(6,214,160,0.3);
+        transform: scale(1.08);
+    }
+
+    /* ============================================
+       PROCUREAI CHAT INTERFACE - PREMIUM STYLES
+       ============================================ */
+
+    /* Full-height chat page wrapper */
+    .chat-page-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 120px);
+        position: relative;
+    }
+
+    /* Chat messages scroll area */
+    .chat-messages-area {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 0 120px 0;
+        scroll-behavior: smooth;
+    }
+
+    /* Welcome hero center section */
+    .chat-welcome-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 60px 20px 40px 20px;
+        animation: fadeInUp 0.6s ease;
+    }
+
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Lightning bolt icon — pure glow, NO box, NO background */
+    .chat-bolt-icon {
+        font-size: 72px;
+        line-height: 1;
+        margin-bottom: 28px;
+        display: block;
+        text-align: center;
+        filter:
+            drop-shadow(0 0 18px rgba(255,160,0,1))
+            drop-shadow(0 0 40px rgba(255,120,0,0.85))
+            drop-shadow(0 0 80px rgba(255,80,0,0.45));
+        animation: bolt-pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes bolt-pulse {
+        0%, 100% {
+            filter:
+                drop-shadow(0 0 18px rgba(255,160,0,1))
+                drop-shadow(0 0 40px rgba(255,120,0,0.8))
+                drop-shadow(0 0 80px rgba(255,80,0,0.35));
+        }
+        50% {
+            filter:
+                drop-shadow(0 0 30px rgba(255,180,0,1))
+                drop-shadow(0 0 70px rgba(255,140,0,0.95))
+                drop-shadow(0 0 130px rgba(255,100,0,0.6));
+        }
+    }
+
+    .chat-welcome-title {
+        font-size: 32px;
+        font-weight: 700;
+        color: #E8E9ED;
+        margin: 0 0 12px 0;
+        letter-spacing: -0.5px;
+    }
+
+    .chat-welcome-subtitle {
+        font-size: 16px;
+        color: #6B7280;
+        line-height: 1.6;
+        max-width: 460px;
+        margin: 0;
+    }
+
+    /* Quick action chips */
+    .quick-chips-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 36px;
+    }
+
+    .quick-chip {
+        background: rgba(14, 22, 52, 0.72);
+        backdrop-filter: blur(12px);
+        border: 1.5px solid rgba(46, 134, 171, 0.42);
+        border-radius: 50px;
+        padding: 10px 22px;
+        color: #A0C4D8;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+        white-space: nowrap;
+        user-select: none;
+    }
+
+    .quick-chip:hover {
+        background: rgba(46, 134, 171, 0.25);
+        border-color: #2E86AB;
+        color: #06D6A0;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(46,134,171,0.25);
+    }
+
+    /* Chat message bubbles */
+    .chat-msg-user {
+        display: flex;
+        justify-content: flex-end;
+        margin: 10px 0;
+        animation: slideInRight 0.3s ease;
+    }
+
+    .chat-msg-ai {
+        display: flex;
+        align-items: center;
+        margin: 10px 0;
+        gap: 12px;
+        animation: slideInLeft 0.3s ease;
+    }
+
+    .chat-bubble-user {
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: white;
+        padding: 14px 20px;
+        border-radius: 20px 20px 4px 20px;
+        max-width: 68%;
+        font-size: 15px;
+        line-height: 1.6;
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
+        word-wrap: break-word;
+    }
+
+    .chat-bubble-ai {
+        background: rgba(26, 31, 50, 0.8);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(46, 134, 171, 0.2);
+        color: #D1D5DB;
+        padding: 14px 20px;
+        border-radius: 20px 20px 20px 4px;
+        max-width: 68%;
+        font-size: 15px;
+        line-height: 1.6;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        word-wrap: break-word;
+    }
+
+    /* AI lightning in chat bubbles — pure glow, no box */
+    .ai-lightning {
+        font-size: 20px;
+        line-height: 1;
+        min-width: 26px;
+        text-align: center;
+        flex-shrink: 0;
+        align-self: center;
+        filter:
+            drop-shadow(0 0 8px rgba(255,160,0,1))
+            drop-shadow(0 0 18px rgba(255,100,0,0.75));
+    }
+
+
+    /* ── Streamlit stBottom container — fully transparent, no box ever ────── */
+    [data-testid="stBottom"],
+    [data-testid="stBottom"] > *,
+    [data-testid="stBottom"] > * > *,
+    [data-testid="stBottom"] > * > * > *,
+    [data-testid="stBottom"] > * > * > * > * {
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Force the inner wrapper to also be transparent */
+    .stBottom, .css-1fcdlhc, .e1ewe7hr0 {
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+
+    /* ── Native chat_input — blue tone, very rounded, no red focus ── */
+    [data-testid="stChatInput"] {
+        background: rgba(10, 20, 55, 0.92) !important;
+        backdrop-filter: blur(24px) !important;
+        border: 1.5px solid rgba(46, 134, 171, 0.45) !important;
+        border-radius: 50px !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.35), 0 0 0 1px rgba(46,134,171,0.08) !important;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+        overflow: hidden !important;
+    }
+
+    [data-testid="stChatInput"]:focus-within {
+        border-color: rgba(46, 134, 171, 0.8) !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.35), 0 0 0 3px rgba(46,134,171,0.14) !important;
+        outline: none !important;
+    }
+
+    /* Kill Streamlit’s own red/orange focus ring */
+    [data-testid="stChatInput"] *:focus,
+    [data-testid="stChatInput"] *:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stChatInputTextArea"] {
+        color: #D8E4F0 !important;
+        font-size: 15px !important;
+        background: transparent !important;
+        caret-color: #06D6A0 !important;
+    }
+
+    /* Round send button — gradient, perfectly circular */
+    [data-testid="stChatInputSubmitButton"] button {
+        border-radius: 50% !important;
+        background: linear-gradient(135deg, #2E86AB 0%, #06D6A0 100%) !important;
+        width: 38px !important;
+        height: 38px !important;
+        padding: 0 !important;
+        box-shadow: 0 4px 12px rgba(46,134,171,0.5) !important;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+        border: none !important;
+    }
+
+    [data-testid="stChatInputSubmitButton"] button:hover {
+        transform: scale(1.12) !important;
+        box-shadow: 0 6px 22px rgba(6,214,160,0.65) !important;
+    }
+
+
+    /* ── Pills: center + full style with green hover glow ─────────── */
+    /* Try all parent container paths Streamlit may render */
+    [data-testid="stPills"],
+    [data-testid="stPills"] > div,
+    [data-testid="stPills"] > div > div {
+        display: flex !important;
+        justify-content: center !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+        width: 100% !important;
+    }
+
+    [data-testid="stPills"] button {
+        background: rgba(14, 22, 50, 0.72) !important;
+        border: 1.5px solid rgba(46, 134, 171, 0.4) !important;
+        border-radius: 50px !important;
+        color: #90B4CC !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        padding: 10px 26px !important;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+        white-space: nowrap !important;
+        box-shadow: none !important;
+        letter-spacing: 0.01em !important;
+    }
+
+    [data-testid="stPills"] button:hover {
+        background: rgba(6, 214, 160, 0.12) !important;
+        border-color: rgba(6, 214, 160, 0.65) !important;
+        color: #06D6A0 !important;
+        transform: translateY(-2px) !important;
+        box-shadow:
+            0 0 18px rgba(6,214,160,0.3),
+            0 6px 20px rgba(6,214,160,0.15) !important;
+    }
+
+    [data-testid="stPills"] button[aria-pressed="true"] {
+        background: rgba(6, 214, 160, 0.15) !important;
+        border-color: #06D6A0 !important;
+        color: #06D6A0 !important;
+        box-shadow: 0 0 14px rgba(6,214,160,0.35) !important;
+    }
+
+    /* ── st.chat_message bubbles ──────────────────────────────────── */
+    [data-testid="stChatMessage"] {
+        background: transparent !important;
+        padding: 4px 0 !important;
+    }
+
+    /* User messages – align right */
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+        flex-direction: row-reverse !important;
+    }
+
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+        font-size: 15px !important;
+        line-height: 1.65 !important;
+    }
+
+    /* AI avatar override */
+    [data-testid="chatAvatarIcon-assistant"] {
+        background: linear-gradient(135deg, #FF9500 0%, #FF6B00 100%) !important;
+        border-radius: 10px !important;
+    }
+
+    /* ── Chat header ── */
+    .block-container,
+    [data-testid="stVerticalBlock"],
+    .element-container {
+        overflow: visible !important;
+    }
+    .chat-active-header {
+        position: sticky;
+        top: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 0 16px 0;
+        margin-bottom: 10px;
+        margin-left: -1cm;
+        background: transparent !important;
+        backdrop-filter: none !important;
+        animation: headerSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @keyframes headerSlideIn {
+        from { opacity: 0; transform: translateY(-12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-header-bolt {
+        font-size: 34px;
+        line-height: 1;
+        flex-shrink: 0;
+        filter:
+            drop-shadow(0 0 10px rgba(255,160,0,1))
+            drop-shadow(0 0 24px rgba(255,110,0,0.85))
+            drop-shadow(0 0 50px rgba(255,80,0,0.5));
+        animation: headerBoltPulse 2.8s ease-in-out infinite;
+    }
+
+    @keyframes headerBoltPulse {
+        0%, 100% {
+            filter:
+                drop-shadow(0 0 10px rgba(255,160,0,1))
+                drop-shadow(0 0 24px rgba(255,110,0,0.85))
+                drop-shadow(0 0 50px rgba(255,80,0,0.5));
+        }
+        50% {
+            filter:
+                drop-shadow(0 0 18px rgba(255,190,0,1))
+                drop-shadow(0 0 42px rgba(255,140,0,1))
+                drop-shadow(0 0 90px rgba(255,100,0,0.7));
+        }
+    }
+
+    .chat-header-name {
+        font-size: 26px;
+        font-weight: 700;
+        color: #E2EAF4;
+        letter-spacing: -0.3px;
+        line-height: 1;
+    }
+
+    /* Spacer so messages dont hide behind fixed input */
+    .chat-bottom-spacer {
+        height: 20px;
+    }
+
+    /* ── Follow-up pill — targeted via marker, same style as quick-action chips ── */
+    [data-testid="stMarkdown"]:has(.followup-pill-trigger) + [data-testid="stButton"] button {
+        background: rgba(14, 22, 52, 0.72) !important;
+        border: 1.5px solid rgba(46, 134, 171, 0.42) !important;
+        border-radius: 50px !important;
+        color: #90B4CC !important;
+        font-size: 12.5px !important;
+        font-weight: 500 !important;
+        padding: 7px 18px !important;
+        white-space: nowrap !important;
+        letter-spacing: 0.01em !important;
+        min-height: unset !important;
+        box-shadow: none !important;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+        transform: none !important;
+        margin: 4px 0 0 0 !important;
+    }
+    [data-testid="stMarkdown"]:has(.followup-pill-trigger) + [data-testid="stButton"] button:hover {
+        background: rgba(6, 214, 160, 0.12) !important;
+        border-color: rgba(6, 214, 160, 0.65) !important;
+        color: #06D6A0 !important;
+        transform: translateY(-2px) !important;
+        box-shadow:
+            0 0 18px rgba(6,214,160,0.3),
+            0 6px 20px rgba(6,214,160,0.15) !important;
+    }
+
+    /* ── Thinking dots animation ── */
+    .thinking-dots {
+        display: flex;
+        gap: 6px;
+        padding: 4px 0;
+    }
+    .thinking-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #06D6A0;
+        animation: dotBounce 1.4s ease-in-out infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotBounce {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1.1); }
+    }
+
+    /* ── Followup pill rows: compact layout matching welcome chips ── */
+    [data-testid="stHorizontalBlock"]:has(.followup-pill-trigger) {
+        display: flex !important;
+        gap: 12px !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+        margin-left: 38px !important;
+        margin-top: 6px !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(.followup-pill-trigger) > div,
+    [data-testid="stHorizontalBlock"]:has(.followup-pill-trigger) > [data-testid="stColumn"] {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        padding: 0 !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(.followup-pill-trigger) [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stHorizontalBlock"]:has(.followup-pill-trigger) [data-testid="stVerticalBlock"] {
+        width: auto !important;
+        padding: 0 !important;
+    }
+
     /* Custom scrollbar */
     ::-webkit-scrollbar {
         width: 12px;
@@ -383,19 +960,531 @@ st.markdown("""
         border: 2px dashed rgba(46, 134, 171, 0.3);
         padding: 20px;
     }
+
+    /* ============================================
+       CROSS-TAB UI ENHANCEMENTS
+       ============================================ */
+
+    /* ── Gradient page headers ── */
+    [data-testid="stMarkdownContainer"] h1 {
+        background: linear-gradient(135deg, #06D6A0 0%, #2E86AB 60%, #8B5CF6 100%) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.5px !important;
+        padding-bottom: 4px !important;
+    }
+
+    /* ── Page transition animation ── */
+    [data-testid="stMainBlockContainer"],
+    section.main > div.block-container {
+        animation: pageSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+    }
+    @keyframes pageSlideIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Styled expanders (glassmorphism) ── */
+    [data-testid="stExpander"] {
+        background: rgba(20, 30, 60, 0.35) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(46, 134, 171, 0.18) !important;
+        border-radius: 14px !important;
+        overflow: hidden !important;
+        transition: border-color 0.3s ease !important;
+    }
+    [data-testid="stExpander"]:hover {
+        border-color: rgba(46, 134, 171, 0.35) !important;
+    }
+    [data-testid="stExpander"] summary {
+        color: #C0CAD8 !important;
+        font-weight: 600 !important;
+        padding: 14px 18px !important;
+    }
+    [data-testid="stExpander"] summary:hover {
+        color: #06D6A0 !important;
+    }
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        border-top: 1px solid rgba(46, 134, 171, 0.12) !important;
+        padding: 14px 18px !important;
+    }
+
+    /* ── Enhanced alert / info / warning boxes ── */
+    [data-testid="stAlert"] {
+        background: rgba(20, 30, 60, 0.4) !important;
+        backdrop-filter: blur(10px) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(46, 134, 171, 0.2) !important;
+    }
+    /* info variant */
+    [data-testid="stAlert"][data-baseweb="notification"] {
+        border-left: 3px solid #2E86AB !important;
+    }
+    [data-testid="stAlert"] .st-emotion-cache-1gulkj5,
+    [data-testid="stAlert"] p {
+        color: #A0ACBE !important;
+    }
+
+    /* ── Dark dataframe theming ── */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrame"] > div {
+        border-radius: 14px !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+        border: 1px solid rgba(46, 134, 171, 0.18) !important;
+        border-radius: 14px !important;
+    }
+
+    /* ── Premium file uploader drop zone ── */
+    [data-testid="stFileUploader"] {
+        background: rgba(20, 30, 60, 0.3) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 2px dashed rgba(46, 134, 171, 0.25) !important;
+        border-radius: 16px !important;
+        padding: 24px !important;
+        transition: all 0.3s ease !important;
+    }
+    [data-testid="stFileUploader"]:hover {
+        border-color: rgba(6, 214, 160, 0.4) !important;
+        background: rgba(6, 214, 160, 0.04) !important;
+    }
+    [data-testid="stFileUploader"] button {
+        background: linear-gradient(135deg, #2E86AB 0%, #3A9BC4 100%) !important;
+        border-radius: 10px !important;
+        border: none !important;
+    }
+    [data-testid="stFileUploader"] small {
+        color: #5E6B80 !important;
+    }
+
+    /* ── Styled number input / slider ── */
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+        background: #06D6A0 !important;
+        border-color: #06D6A0 !important;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] div[style*="background"] {
+        background: linear-gradient(90deg, #06D6A0, #2E86AB) !important;
+    }
+
+    /* ── Primary button restyle ── */
+    button[data-testid="stBaseButton-primary"],
+    .stButton > button[kind="primary"],
+    .stButton > button[type="submit"] {
+        background: linear-gradient(135deg, rgba(6, 214, 160, 0.15) 0%, rgba(46, 134, 171, 0.12) 100%) !important;
+        border: 1px solid rgba(6, 214, 160, 0.25) !important;
+        color: #E8E9ED !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        padding: 8px 24px !important;
+        transition: all 0.25s ease !important;
+        box-shadow: none !important;
+    }
+    button[data-testid="stBaseButton-primary"]:hover,
+    .stButton > button[kind="primary"]:hover,
+    .stButton > button[type="submit"]:hover {
+        background: linear-gradient(135deg, rgba(6, 214, 160, 0.22) 0%, rgba(46, 134, 171, 0.18) 100%) !important;
+        border-color: rgba(6, 214, 160, 0.35) !important;
+        color: #FFFFFF !important;
+        box-shadow: none !important;
+    }
+
+    /* ── Secondary / default button restyle ── */
+    .stButton > button,
+    button[data-testid="stBaseButton-secondary"] {
+        background: rgba(20, 30, 60, 0.4) !important;
+        border: 1px solid rgba(100, 116, 139, 0.25) !important;
+        color: #C0CAD8 !important;
+        border-radius: 10px !important;
+        font-weight: 500 !important;
+        transition: all 0.25s ease !important;
+    }
+    .stButton > button:hover,
+    button[data-testid="stBaseButton-secondary"]:hover {
+        background: rgba(30, 42, 78, 0.6) !important;
+        border-color: rgba(100, 116, 139, 0.4) !important;
+        color: #E8E9ED !important;
+    }
+
+    /* ── Tabs — Premium Glass Pill Design ── */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        background: rgba(15, 23, 42, 0.4) !important;
+        border-radius: 12px !important;
+        padding: 5px !important;
+        gap: 6px !important;
+        border: 1px solid rgba(100, 116, 139, 0.15) !important;
+        backdrop-filter: blur(10px) !important;
+        margin-bottom: 25px !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        background: transparent !important;
+        border-radius: 8px !important;
+        color: #718096 !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
+        padding: 8px 20px !important;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"]:hover {
+        color: #E2E8F0 !important;
+        background: rgba(100, 116, 139, 0.1) !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
+        background: rgba(6, 214, 160, 0.12) !important;
+        color: #06D6A0 !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(6, 214, 160, 0.2) !important;
+        box-shadow: 0 0 15px rgba(6, 214, 160, 0.08) !important;
+    }
+    /* Specific color accents for certain tabs if needed */
+    [data-testid="stTabs"] [data-baseweb="tab"]:focus {
+        outline: none !important;
+    }
+    
+    /* Kill ALL default highlights/borders */
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    [data-testid="stTabs"] [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab-list"]::after {
+        display: none !important;
+    }
+
+    /* ── Alert boxes — Dynamic Glassmorphism ── */
+    div[data-testid="stNotification"],
+    div[role="alert"],
+    .stAlert,
+    div[data-testid="stAlert"] {
+        background: rgba(15, 23, 42, 0.5) !important;
+        backdrop-filter: blur(12px) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(100, 116, 139, 0.18) !important;
+        padding: 16px 20px !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+    }
+    /* Info (Blue/Green) */
+    div[role="alert"].st-ae, div[data-testid="stAlert"].st-ae {
+        border-left: 4px solid #06D6A0 !important;
+    }
+    /* Warning (Orange/Yellow) */
+    div[role="alert"].st-af, div[data-testid="stAlert"].st-af {
+        border-left: 4px solid #F77F00 !important;
+    }
+    /* Success (Green) */
+    div[role="alert"].st-ag, div[data-testid="stAlert"].st-ag {
+        border-left: 4px solid #06D6A0 !important;
+    }
+    /* Error (Red) */
+    div[role="alert"].st-ah, div[data-testid="stAlert"].st-ah {
+        border-left: 4px solid #EF476F !important;
+    }
+    div[data-testid="stNotification"] p,
+    .stAlert p,
+    div[role="alert"] p {
+        color: #8899AA !important;
+    }
+    div[data-testid="stNotification"] svg,
+    .stAlert svg {
+        fill: #5A6478 !important;
+    }
+
+    /* ── Spinner ── */
+    .stSpinner > div > div {
+        border-top-color: #06D6A0 !important;
+    }
+
+    /* ── Checkbox restyle ── */
+    [data-testid="stCheckbox"] label span[data-testid="stCheckbox-label"] {
+        color: #C0CAD8 !important;
+    }
+
+    /* ── Text input restyle ── */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input {
+        background: rgba(15, 23, 42, 0.5) !important;
+        border: 1px solid rgba(100, 116, 139, 0.2) !important;
+        border-radius: 10px !important;
+        color: #E8E9ED !important;
+        transition: border-color 0.25s ease !important;
+    }
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus {
+        border-color: rgba(200, 210, 225, 0.35) !important;
+        box-shadow: none !important;
+    }
+
+    /* ── Labels for all inputs ── */
+    [data-testid="stTextInput"] label p,
+    [data-testid="stNumberInput"] label p,
+    [data-testid="stSelectbox"] label p,
+    [data-testid="stSlider"] label p,
+    [data-testid="stFileUploader"] label p {
+        color: #8899AA !important;
+        font-weight: 500 !important;
+    }
+
 </style>
+<script>
+(function() {
+    /* ── 1. Sticky header via IntersectionObserver ── */
+    function initStickyHeader() {
+        var hdr = document.getElementById('procure-header');
+        if (!hdr) return;
+        // Sentinel: invisible element placed just above header
+        var sentinel = document.createElement('div');
+        sentinel.style.cssText = 'height:1px;width:100%;position:relative;top:0;pointer-events:none;';
+        hdr.parentNode.insertBefore(sentinel, hdr);
+        // Capture header's initial left/width for fixed positioning
+        var rect = hdr.getBoundingClientRect();
+        var fixedLeft = rect.left;
+        var fixedWidth = rect.width;
+        var obs = new IntersectionObserver(function(entries) {
+            if (!entries[0].isIntersecting) {
+                hdr.style.position = 'fixed';
+                hdr.style.top = '10px';
+                hdr.style.left = fixedLeft + 'px';
+                hdr.style.width = fixedWidth + 'px';
+                hdr.style.zIndex = '9999';
+                hdr.style.background = 'transparent';
+            } else {
+                hdr.style.position = 'relative';
+                hdr.style.top = 'auto';
+                hdr.style.left = 'auto';
+                hdr.style.width = 'auto';
+                hdr.style.zIndex = 'auto';
+            }
+        }, { threshold: 0 });
+        obs.observe(sentinel);
+    }
+
+    /* ── 2. Restyle followup pill buttons ── */
+    var PILL_STYLE = [
+        'background: rgba(14,22,52,0.72)',
+        'border: 1.5px solid rgba(46,134,171,0.42)',
+        'border-radius: 50px',
+        'color: #90B4CC',
+        'font-size: 12.5px',
+        'font-weight: 500',
+        'padding: 7px 18px',
+        'white-space: nowrap',
+        'box-shadow: none',
+        'letter-spacing: 0.01em',
+        'min-height: unset',
+        'line-height: 1.4',
+        'transition: all 0.3s cubic-bezier(0.4,0,0.2,1)',
+        'transform: none',
+        'margin: 4px 0 0 0',
+        'width: auto',
+        'display: inline-flex'
+    ].join(';');
+
+    function styleFollowupBtns() {
+        document.querySelectorAll('.followup-pill-trigger').forEach(function(marker) {
+            // Walk up to the element-container wrapper
+            var wrap = marker.closest('.element-container') || marker.parentNode;
+            if (!wrap) return;
+            var nextWrap = wrap.nextElementSibling;
+            if (!nextWrap) return;
+            var btn = nextWrap.querySelector('button');
+            if (!btn || btn.dataset.pillStyled) return;
+            btn.dataset.pillStyled = '1';
+            btn.style.cssText = PILL_STYLE;
+            btn.addEventListener('mouseenter', function() {
+                btn.style.cssText = PILL_STYLE +
+                    ';background: rgba(6,214,160,0.12)' +
+                    ';border-color: rgba(6,214,160,0.65)' +
+                    ';color: #06D6A0' +
+                    ';transform: translateY(-2px)' +
+                    ';box-shadow: 0 0 18px rgba(6,214,160,0.3),0 6px 20px rgba(6,214,160,0.15)';
+            });
+            btn.addEventListener('mouseleave', function() {
+                btn.style.cssText = PILL_STYLE;
+            });
+        });
+    }
+
+    function init() {
+        initStickyHeader();
+        styleFollowupBtns();
+        // Re-check on DOM changes (Streamlit re-renders components)
+        new MutationObserver(function() {
+            initStickyHeader();
+            styleFollowupBtns();
+        }).observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else { setTimeout(init, 100); }
+})();
+</script>
 """, unsafe_allow_html=True)
 
+# ── Sidebar toggle via components.html (runs JS in real iframe with window.parent access) ──
+components.html("""
+<script>
+(function() {
+    var doc = window.parent.document;
+    // Remove any stale button first, then re-create
+    var old = doc.getElementById('mas-sidebar-toggle');
+    if (old) old.remove();
+
+    var btn = doc.createElement('button');
+    btn.id = 'mas-sidebar-toggle';
+    btn.title = 'Toggle navigation panel';
+    btn.innerHTML = '&#9776;';
+    btn.style.cssText = [
+        'position:fixed', 'top:14px', 'left:14px', 'z-index:99999',
+        'background:rgba(20,30,60,0.88)', 'backdrop-filter:blur(16px)',
+        'border:1.5px solid rgba(46,134,171,0.5)', 'border-radius:12px',
+        'width:40px', 'height:40px', 'display:flex', 'align-items:center',
+        'justify-content:center', 'cursor:pointer',
+        'transition:all 0.3s cubic-bezier(0.4,0,0.2,1)',
+        'box-shadow:0 4px 16px rgba(0,0,0,0.35)', 'color:#A0C4D8',
+        'font-size:18px', 'line-height:1', 'padding:0'
+    ].join(';');
+    btn.onmouseenter = function(){
+        btn.style.background = 'rgba(46,134,171,0.3)';
+        btn.style.borderColor = '#06D6A0';
+        btn.style.color = '#06D6A0';
+        btn.style.boxShadow = '0 0 18px rgba(6,214,160,0.3)';
+        btn.style.transform = 'scale(1.08)';
+    };
+    btn.onmouseleave = function(){
+        btn.style.background = 'rgba(20,30,60,0.88)';
+        btn.style.borderColor = 'rgba(46,134,171,0.5)';
+        btn.style.color = '#A0C4D8';
+        btn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
+        btn.style.transform = 'scale(1)';
+    };
+    btn.onclick = function() {
+        // Re-query every click so we always find the current toggle
+        var d = window.parent.document;
+        var toggle = d.querySelector('[data-testid="stSidebarCollapseButton"] button')
+                  || d.querySelector('[data-testid="collapsedControl"] button')
+                  || d.querySelector('button[aria-label="Close sidebar"]')
+                  || d.querySelector('button[aria-label="Open sidebar"]')
+                  || d.querySelector('[data-testid="stSidebarCollapsedControl"] button');
+        if (toggle) { toggle.click(); return; }
+        // Fallback: force-toggle sidebar transform
+        var sb = d.querySelector('[data-testid="stSidebar"]');
+        if (sb) {
+            var hidden = sb.getAttribute('aria-expanded') === 'false'
+                      || sb.style.transform.indexOf('-') > -1
+                      || sb.offsetWidth < 10;
+            if (hidden) {
+                sb.style.transform = 'none';
+                sb.setAttribute('aria-expanded', 'true');
+            } else {
+                sb.style.transform = 'translateX(-110%)';
+                sb.setAttribute('aria-expanded', 'false');
+            }
+        }
+    };
+    doc.body.appendChild(btn);
+})();
+</script>
+""", height=0, width=0)
+
+# ── Orchestrator cached for the server lifetime (avoids re-init on every rerun) ──
+@st.cache_resource
+def _get_orchestrator():
+    from agents.Agent0 import MasterOrchestrator
+    return MasterOrchestrator()
+
 # Initialize session state
-if 'orchestrator' not in st.session_state:
-    st.session_state.orchestrator = MasterOrchestrator()
-    
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 
+# Attach cached orchestrator to session (safe — cache_resource is shared)
+if 'orchestrator' not in st.session_state:
+    st.session_state.orchestrator = _get_orchestrator()
+if 'pending_prompt' not in st.session_state:
+    st.session_state.pending_prompt = None
+
 # Utility functions
+
+import re as _re
+
+def _md_to_html(text):
+    """Convert basic markdown to safe HTML for chat bubbles."""
+    lines = text.split('\n')
+    out = []
+    in_ul = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('### '):
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append(f'<h3 style="margin:10px 0 4px;font-size:15px;font-weight:700;color:#E2EAF4;">{stripped[4:]}</h3>')
+        elif stripped.startswith('## '):
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append(f'<h2 style="margin:12px 0 4px;font-size:17px;font-weight:700;color:#E2EAF4;">{stripped[3:]}</h2>')
+        elif stripped.startswith('# '):
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append(f'<h1 style="margin:12px 0 6px;font-size:19px;font-weight:700;color:#E2EAF4;">{stripped[2:]}</h1>')
+        elif stripped.startswith(('- ', '* ')):
+            if not in_ul: out.append('<ul style="margin:6px 0;padding-left:18px;">'); in_ul = True
+            out.append(f'<li style="margin:3px 0;color:#D0DCE8;">{stripped[2:]}</li>')
+        elif stripped in ('---', '___', '***'):
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append('<hr style="border:none;border-top:1px solid rgba(46,134,171,0.25);margin:10px 0;">')
+        elif stripped == '':
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append('<div style="height:6px;"></div>')
+        else:
+            if in_ul: out.append('</ul>'); in_ul = False
+            out.append(f'<p style="margin:4px 0;line-height:1.65;color:#D0DCE8;">{stripped}</p>')
+    if in_ul:
+        out.append('</ul>')
+    html = '\n'.join(out)
+    # Bold and italic
+    html = _re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', html)
+    html = _re.sub(r'\*\*(.+?)\*\*', r'<strong style="color:#E8EDF4;">\1</strong>', html)
+    html = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
+    html = _re.sub(r'`(.+?)`', r'<code style="background:rgba(46,134,171,0.15);padding:1px 5px;border-radius:4px;font-size:13px;">\1</code>', html)
+    return html
+
+def _parse_ai_message(content):
+    """Split AI response into main body and a list of followup pill labels (up to 3)."""
+    followups = []
+
+    # 1. Detect === separator: each non-empty line after === becomes one pill
+    parts = _re.split(r'\n\s*===+\s*\n', content, maxsplit=1)
+    if len(parts) == 2:
+        lines = [l.strip() for l in parts[1].strip().splitlines() if l.strip()]
+        followups = [l for l in lines if len(l) > 3][:3]
+        return parts[0].strip(), followups
+
+    # 2. Detect trailing paragraph that is a standalone question
+    paras = [p.strip() for p in content.strip().split('\n\n') if p.strip()]
+    if paras:
+        last = paras[-1]
+        if last.endswith('?') and len(last) < 250 and len(paras) > 1:
+            opts = _re.split(r',?\s+or\s+would\s+you\s+like\s+', last, flags=_re.IGNORECASE)
+            if len(opts) > 1:
+                followups = [o.strip().strip('?') + '?' for o in opts if len(o.strip()) > 4][:3]
+            else:
+                followups = [last]
+            return '\n\n'.join(paras[:-1]).strip(), followups
+
+    return content.strip(), []
+
+def _stream_response(text):
+    """Yield word chunks for progressive streaming display."""
+    words = text.split(' ')
+    chunk_size = 4
+    for i in range(0, len(words), chunk_size):
+        yield ' '.join(words[i:i + chunk_size])
+        time.sleep(0.018)
+
+@st.cache_data(ttl=30)
 def load_json_data(filepath, default=None):
-    """Load JSON data with error handling"""
+    """Load JSON data with error handling and 30s cache."""
     try:
         if os.path.exists(filepath):
             with open(filepath, 'r') as f:
@@ -405,8 +1494,9 @@ def load_json_data(filepath, default=None):
         log_error(f"Error loading {filepath}: {e}")
         return default if default is not None else {}
 
+@st.cache_data(ttl=30)
 def load_inventory_data():
-    """Load current inventory from CSV"""
+    """Load current inventory from CSV with 30s cache."""
     try:
         csv_path = "data/current_inventory.csv"
         if os.path.exists(csv_path):
@@ -416,8 +1506,9 @@ def load_inventory_data():
         log_error(f"Error loading inventory: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=30)
 def get_system_metrics():
-    """Calculate real-time system metrics"""
+    """Calculate real-time system metrics with 30s cache."""
     try:
         inventory_df = load_inventory_data()
         quotes = load_json_data("data/quotes_collected.json", {})
@@ -449,54 +1540,80 @@ def get_system_metrics():
 # Sidebar navigation
 with st.sidebar:
     st.markdown("""
-    <h2 style='background: linear-gradient(135deg, #06D6A0 0%, #2E86AB 100%); 
-                -webkit-background-clip: text; 
-                -webkit-text-fill-color: transparent; 
-                font-weight: 800; 
-                font-size: 22px; 
-                margin-bottom: 0; 
-                letter-spacing: -0.5px;'>
-        Multi-Agent Procurement System
-    </h2>
+    <style>
+        @keyframes titleShimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+    </style>
+    <div style='padding: 6px 0 4px 0;'>
+        <div style='display: flex; align-items: center; gap: 12px;'>
+            <span style='font-size: 30px; line-height: 1;
+                         filter: drop-shadow(0 0 10px rgba(255,160,0,0.95))
+                                 drop-shadow(0 0 22px rgba(255,100,0,0.6));'>&#9889;</span>
+            <div>
+                <div style='font-size: 22px; font-weight: 800;
+                            background: linear-gradient(90deg, #06D6A0, #2E86AB, #8B5CF6, #06D6A0);
+                            background-size: 200% auto;
+                            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                            background-clip: text;
+                            animation: titleShimmer 4s linear infinite;
+                            letter-spacing: -0.3px; line-height: 1.2;'>ProcureAI</div>
+                <div style='font-size: 10px; color: #5A6478; font-weight: 600;
+                            letter-spacing: 2px; text-transform: uppercase;
+                            margin-top: 3px;'>Multi-Agent System</div>
+            </div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
     st.markdown("---")
-    
+
+    st.markdown("<div style='color:#4A5568; font-size:9px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; padding:0 18px 6px 18px;'>Navigation</div>", unsafe_allow_html=True)
     page = st.radio(
         "Navigation",
         ["Dashboard", "Chat Interface", "Inventory Monitor", "Procurement Pipeline", "Document Verification", "Configurations"],
         label_visibility="collapsed"
     )
-    
+
     st.markdown("---")
-    st.markdown("#### System Status")
+    st.markdown("<div style='color:#5A6478; font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; padding:0 0 6px 0;'>System Status</div>", unsafe_allow_html=True)
     metrics = get_system_metrics()
-    
+
     st.markdown(f"""
-    <div style='padding: 14px; background: rgba(6, 214, 160, 0.15); backdrop-filter: blur(10px); border-radius: 12px; margin: 10px 0; border: 1px solid rgba(6, 214, 160, 0.3);'>
-        <div style='color: #A0A3B1; font-size: 11px; font-weight: 600; letter-spacing: 1px;'>SYSTEM</div>
-        <div style='color: #06D6A0; font-size: 20px; font-weight: 700; margin-top: 4px;'>Operational</div>
+    <div style='padding: 12px 14px; background: linear-gradient(135deg, rgba(6,214,160,0.10) 0%, rgba(6,214,160,0.04) 100%);
+                border-radius: 10px; margin: 6px 0; border: 1px solid rgba(6,214,160,0.20);
+                display: flex; align-items: center; justify-content: space-between;'>
+        <div style='color: #6B7A8E; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;'>System</div>
+        <div style='display: flex; align-items: center; gap: 6px;'>
+            <span style='width:7px; height:7px; border-radius:50%; background:#06D6A0;
+                         box-shadow: 0 0 8px rgba(6,214,160,0.6); display:inline-block;'></span>
+            <span style='color: #06D6A0; font-size: 13px; font-weight: 700;'>Operational</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown(f"""
-    <div style='padding: 14px; background: rgba(46, 134, 171, 0.15); backdrop-filter: blur(10px); border-radius: 12px; margin: 10px 0; border: 1px solid rgba(46, 134, 171, 0.3);'>
-        <div style='color: #A0A3B1; font-size: 11px; font-weight: 600; letter-spacing: 1px;'>ACTIVE AGENTS</div>
-        <div style='color: #2E86AB; font-size: 20px; font-weight: 700; margin-top: 4px;'>12/12</div>
+    <div style='padding: 12px 14px; background: linear-gradient(135deg, rgba(46,134,171,0.10) 0%, rgba(46,134,171,0.04) 100%);
+                border-radius: 10px; margin: 6px 0; border: 1px solid rgba(46,134,171,0.20);
+                display: flex; align-items: center; justify-content: space-between;'>
+        <div style='color: #6B7A8E; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;'>Agents</div>
+        <span style='color: #2E86AB; font-size: 13px; font-weight: 700;'>12 / 12</span>
     </div>
     """, unsafe_allow_html=True)
-    
+
     if metrics['low_stock_count'] > 0:
         st.markdown(f"""
-        <div style='padding: 14px; background: rgba(247, 127, 0, 0.15); backdrop-filter: blur(10px); border-radius: 12px; margin: 10px 0; border: 1px solid rgba(247, 127, 0, 0.3);'>
-            <div style='color: #A0A3B1; font-size: 11px; font-weight: 600; letter-spacing: 1px;'>LOW STOCK ALERTS</div>
-            <div style='color: #F77F00; font-size: 20px; font-weight: 700; margin-top: 4px;'>{metrics['low_stock_count']}</div>
+        <div style='padding: 12px 14px; background: linear-gradient(135deg, rgba(247,127,0,0.10) 0%, rgba(247,127,0,0.04) 100%);
+                    border-radius: 10px; margin: 6px 0; border: 1px solid rgba(247,127,0,0.20);
+                    display: flex; align-items: center; justify-content: space-between;'>
+            <div style='color: #6B7A8E; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;'>Low Stock</div>
+            <span style='color: #F77F00; font-size: 13px; font-weight: 700;'>{metrics['low_stock_count']} items</span>
         </div>
         """, unsafe_allow_html=True)
 
 # Main content area
 if page == "Dashboard":
-    st.markdown("# Dashboard")
-    st.markdown("Real-time overview of your procurement system")
+    st.markdown("<h1 style='font-size:32px;font-weight:800;letter-spacing:-0.5px;margin-bottom:0;display:inline-block;background:linear-gradient(90deg,#06D6A0,#2E86AB,#8B5CF6,#06D6A0);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:titleShimmer 4s linear infinite;'>Dashboard</h1><p style='color:#6B7A8E;margin-top:4px;font-size:15px;'>Real-time overview of your procurement system</p>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     metrics = get_system_metrics()
@@ -646,97 +1763,322 @@ if page == "Dashboard":
         st.info("No purchase orders found")
 
 elif page == "Chat Interface":
-    st.markdown("# Procurement Assistant")
-    st.markdown("""
-    <p style='font-family: "Segoe UI", sans-serif; 
-              font-size: 16px; 
-              color: #06D6A0; 
-              font-weight: 500; 
-              margin-bottom: 24px; 
-              letter-spacing: 0.3px;'>
-        Conversational interface powered by 12 specialized AI agents
-    </p>
-    """, unsafe_allow_html=True)
-    
-    # Only show chat container border if there are messages
-    if st.session_state.chat_history:
-        st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
-    
-    chat_display = st.container()
-    
-    with chat_display:
-        if not st.session_state.chat_history:
-            st.markdown("""
-            <div class='info-card'>
-                <h4 style='margin: 0; color: #2E86AB;'>Welcome to the Procurement Assistant</h4>
-                <p style='margin: 8px 0 0 0; color: #A0A3B1;'>
-                    I can help you with demand forecasting, supplier discovery, quote collection, 
-                    purchase order management, and document verification. Try asking:
-                </p>
-                <ul style='color: #A0A3B1; margin: 8px 0 0 20px;'>
-                    <li>Check inventory for item XYZ</li>
-                    <li>Find suppliers for steel pipes</li>
-                    <li>Analyze quotes for PO-12345</li>
-                    <li>Show pending purchase orders</li>
-                </ul>
+
+    # ── Session state init ─────────────────────────────────────────────
+    if 'chip_query' not in st.session_state:
+        st.session_state.chip_query = None
+
+    # ── Welcome hero (shown only when no messages yet) ─────────────────
+    if not st.session_state.chat_history:
+        st.markdown("""
+        <div class='chat-welcome-hero'>
+            <div class='chat-bolt-icon'>⚡</div>
+            <h1 class='chat-welcome-title'>ProcureAI Assistant</h1>
+            <p class='chat-welcome-subtitle'>
+                Ask me about inventory, suppliers, RFQs, purchase orders,<br>or document verification.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Inject page-level CSS overrides just for the chat welcome area ──
+        st.markdown("""
+        <style>
+        /* Kill the stBottom black box — target ALL children deep */
+        [data-testid="stBottom"],
+        [data-testid="stBottom"] > *,
+        [data-testid="stBottom"] > * > *,
+        [data-testid="stBottom"] > * > * > *,
+        [data-testid="stBottom"] > * > * > * > * {
+            background: transparent !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+
+        /* Chat input: deep blue, very rounded, kill the red Streamlit ring */
+        [data-testid="stChatInput"] {
+            background: rgba(8, 16, 50, 0.96) !important;
+            border: 1.5px solid rgba(46, 134, 171, 0.5) !important;
+            border-radius: 50px !important;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.45) !important;
+            overflow: hidden !important;
+        }
+        [data-testid="stChatInput"]:focus-within {
+            border-color: rgba(46, 134, 171, 0.85) !important;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 0 0 3px rgba(46,134,171,0.15) !important;
+        }
+        /* Override Streamlit's --primary-color red focus across all inner elements */
+        [data-testid="stBottom"] *,
+        [data-testid="stChatInput"] *,
+        [data-testid="stChatInput"] *:focus,
+        [data-testid="stChatInput"] *:focus-visible,
+        [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInput"] textarea:focus {
+            outline: none !important;
+            box-shadow: none !important;
+            border-color: transparent !important;
+            --primary-color: transparent !important;
+        }
+
+        /* ── Welcome-screen pill chips — identical style/gap as followup pills ── */
+        [data-testid="stHorizontalBlock"] [data-testid="stButton"] button {
+            background: rgba(14, 22, 52, 0.72) !important;
+            border: 1.5px solid rgba(46, 134, 171, 0.42) !important;
+            border-radius: 50px !important;
+            color: #90B4CC !important;
+            font-size: 12.5px !important;
+            font-weight: 500 !important;
+            padding: 10px 22px !important;
+            white-space: nowrap !important;
+            overflow: visible !important;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+            min-height: unset !important;
+        }
+        [data-testid="stHorizontalBlock"] [data-testid="stButton"] button:hover {
+            background: rgba(6, 214, 160, 0.10) !important;
+            border-color: rgba(6, 214, 160, 0.65) !important;
+            color: #06D6A0 !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 0 18px rgba(6,214,160,0.28) !important;
+        }
+        /* Pills row: centered, 12px gap — same as followup pills */
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            justify-content: center !important;
+            gap: 12px !important;
+            flex-wrap: nowrap !important;
+        }
+        /* Each column shrinks to fit its button — no extra whitespace */
+        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+        [data-testid="stHorizontalBlock"] > div {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: unset !important;
+            padding: 0 !important;
+        }
+        [data-testid="stHorizontalBlock"] [data-testid="stVerticalBlockBorderWrapper"],
+        [data-testid="stHorizontalBlock"] [data-testid="stVerticalBlock"] {
+            padding: 0 !important;
+            width: auto !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+
+        # 4 equal columns — CSS handles centering the row
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        with cc1:
+            if st.button("Check inventory", key="chip_inv"):
+                st.session_state.chip_query = "Check current inventory levels"
+                st.rerun()
+        with cc2:
+            if st.button("Find suppliers", key="chip_sup"):
+                st.session_state.chip_query = "Find suppliers for our items"
+                st.rerun()
+        with cc3:
+            if st.button("Show pending RFQs", key="chip_rfq"):
+                st.session_state.chip_query = "Show all pending RFQs"
+                st.rerun()
+        with cc4:
+            if st.button("Analyze quotes", key="chip_qt"):
+                st.session_state.chip_query = "Analyze collected quotes"
+                st.rerun()
+    else:
+        # ── Glowing mini header ────────────────────────────────────────────
+        st.markdown("""
+        <div class="chat-active-header" id="procure-header">
+            <span class="chat-header-bolt">&#9889;</span>
+            <span class="chat-header-name">ProcureAI Assistant</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Render chat messages with custom styled bubbles ────────────
+        for i, msg in enumerate(st.session_state.chat_history):
+            if msg['role'] == 'user':
+                content = msg['content'].replace('<', '&lt;').replace('>', '&gt;')
+                st.markdown(f"""
+                <div class='chat-msg-user'>
+                    <div class='chat-bubble-user'>{content}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                main_content, followups = _parse_ai_message(msg['content'])
+                html_content = _md_to_html(main_content)
+                st.markdown(f"""
+                <div class='chat-msg-ai'>
+                    <div class='ai-lightning'>&#9889;</div>
+                    <div class='chat-bubble-ai'>{html_content}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if followups:
+                    # Show each followup as its own pill in a row
+                    n = len(followups)
+                    pill_cols = st.columns(n if n > 1 else 1)
+                    for j, (pc, fq) in enumerate(zip(pill_cols, followups)):
+                        with pc:
+                            st.markdown('<div class="followup-pill-trigger"></div>', unsafe_allow_html=True)
+                            if st.button(fq, key=f"followup_{i}_{j}"):
+                                st.session_state.chip_query = fq
+                                st.rerun()
+
+        # ── Handle pending response with streaming ──────────────────────
+        if st.session_state.get('pending_prompt'):
+            _prompt = st.session_state.pending_prompt
+            st.session_state.pending_prompt = None
+            response_ph = st.empty()
+            response_ph.markdown("""
+            <div class='chat-msg-ai'>
+                <div class='ai-lightning'>&#9889;</div>
+                <div class='chat-bubble-ai'>
+                    <div class='thinking-dots'><span></span><span></span><span></span></div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
-        
-        for msg in st.session_state.chat_history:
-            if msg['role'] == 'user':
-                # Escape HTML to prevent hashtags from being interpreted
-                content = msg['content'].replace('<', '&lt;').replace('>', '&gt;')
-                st.markdown(f"<div class='user-message'>{content}</div>", unsafe_allow_html=True)
-            else:
-                # Escape HTML to prevent hashtags from being interpreted
-                content = msg['content'].replace('<', '&lt;').replace('>', '&gt;')
-                st.markdown(f"<div class='assistant-message'>{content}</div>", unsafe_allow_html=True)
-    
-    if st.session_state.chat_history:
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([6, 1])
-    
-    with col1:
-        user_input = st.text_input(
-            "Type your message...",
-            key="chat_input",
-            placeholder="Type a message...",
-            label_visibility="collapsed"
-        )
-    
-    with col2:
-        send_button = st.button("Send", width='stretch')
-    
-    if send_button and user_input:
+            try:
+                response = st.session_state.orchestrator.process_request(_prompt)
+            except Exception as e:
+                response = f"I encountered an error: {str(e)}. Please try again."
+            main_text, _ = _parse_ai_message(response)
+            streamed_parts = []
+            for chunk in _stream_response(main_text):
+                streamed_parts.append(chunk)
+                partial_html = _md_to_html(' '.join(streamed_parts))
+                response_ph.markdown(f"""
+                <div class='chat-msg-ai'>
+                    <div class='ai-lightning'>&#9889;</div>
+                    <div class='chat-bubble-ai'>{partial_html}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            st.session_state.chat_history.append({
+                'role': 'assistant',
+                'content': response,
+                'timestamp': datetime.now().isoformat()
+            })
+            st.rerun()
+
+        # ── JS via components.html (same-origin iframe → window.parent.document) ──
+        # This is the ONLY reliable way to run JS that touches Streamlit's DOM
+        components.html("""
+        <script>
+        (function() {
+            var doc = window.parent.document;
+
+            /* — 1. Restyle followup pills — */
+            var PILL = 'background:rgba(14,22,52,0.85)!important;'
+                     + 'border:1.5px solid rgba(46,134,171,0.42)!important;'
+                     + 'border-radius:50px!important;'
+                     + 'color:#90B4CC!important;'
+                     + 'font-size:12.5px!important;'
+                     + 'font-weight:500!important;'
+                     + 'padding:7px 18px!important;'
+                     + 'white-space:nowrap!important;'
+                     + 'box-shadow:none!important;'
+                     + 'letter-spacing:0.01em!important;'
+                     + 'width:auto!important;'
+                     + 'display:inline-flex!important;'
+                     + 'align-items:center!important;'
+                     + 'cursor:pointer!important;'
+                     + 'transition:all 0.3s cubic-bezier(0.4,0,0.2,1)!important;';
+
+            var PILL_HOVER = PILL
+                     + 'background:rgba(6,214,160,0.12)!important;'
+                     + 'border-color:rgba(6,214,160,0.65)!important;'
+                     + 'color:#06D6A0!important;'
+                     + 'box-shadow:0 0 18px rgba(6,214,160,0.3),0 6px 20px rgba(6,214,160,0.15)!important;';
+
+            function stylePills() {
+                doc.querySelectorAll('.followup-pill-trigger').forEach(function(m) {
+                    var wrap = m.closest('.element-container') || m.parentNode;
+                    if (!wrap) return;
+                    var next = wrap.nextElementSibling;
+                    if (!next) return;
+                    var btn = next.querySelector('button');
+                    if (!btn || btn.dataset.ps) return;
+                    btn.dataset.ps = '1';
+                    btn.setAttribute('style', PILL);
+                    btn.onmouseenter = function() { btn.setAttribute('style', PILL_HOVER); };
+                    btn.onmouseleave = function() { btn.setAttribute('style', PILL); };
+
+                    /* Collapse the Streamlit column to auto-width using direct property assignment
+                       (cssText doesn't override Streamlit's inline styles; individual props do) */
+                    var col = btn.closest('[data-testid="column"]');
+                    if (col) {
+                        col.style.setProperty('flex', '0 0 auto', 'important');
+                        col.style.setProperty('width', 'auto', 'important');
+                        col.style.setProperty('min-width', '0', 'important');
+                        col.style.setProperty('padding', '0', 'important');
+                        col.style.setProperty('max-width', 'none', 'important');
+                    }
+
+                    /* Fix the horizontal block row: compact flex, 12px gap, aligned with bubble */
+                    var row = btn.closest('[data-testid="stHorizontalBlock"]');
+                    if (row && !row.dataset.pr) {
+                        row.dataset.pr = '1';
+                        row.style.setProperty('display', 'flex', 'important');
+                        row.style.setProperty('flex-wrap', 'wrap', 'important');
+                        row.style.setProperty('gap', '12px', 'important');
+                        row.style.setProperty('margin-left', '38px', 'important');
+                        row.style.setProperty('margin-top', '6px', 'important');
+                        row.style.setProperty('width', 'auto', 'important');
+                        row.style.setProperty('justify-content', 'flex-start', 'important');
+                    }
+                });
+            }
+
+            /* — 2. Sticky header via IntersectionObserver — */
+            function initSticky() {
+                var hdr = doc.getElementById('procure-header');
+                if (!hdr || hdr._stickyInit) return;
+                hdr._stickyInit = true;
+                var rect = hdr.getBoundingClientRect();
+                var sentinel = doc.createElement('div');
+                sentinel.style.cssText = 'height:1px;width:100%;pointer-events:none;';
+                hdr.parentNode.insertBefore(sentinel, hdr);
+                new IntersectionObserver(function(entries) {
+                    if (!entries[0].isIntersecting) {
+                        hdr.style.position = 'fixed';
+                        hdr.style.top = '10px';
+                        hdr.style.left = rect.left + 'px';
+                        hdr.style.width = rect.width + 'px';
+                        hdr.style.zIndex = '9999';
+                        hdr.style.background = 'transparent';
+                    } else {
+                        hdr.style.position = 'relative';
+                        hdr.style.top = 'auto';
+                        hdr.style.left = 'auto';
+                        hdr.style.width = 'auto';
+                    }
+                }, { threshold: 0 }).observe(sentinel);
+            }
+
+            function run() { stylePills(); initSticky(); }
+            run();
+            new MutationObserver(run).observe(doc.body, { childList: true, subtree: true });
+        })();
+        </script>
+        """, height=0, width=0)
+
+    st.markdown("<div class='chat-bottom-spacer'></div>", unsafe_allow_html=True)
+
+    # ── Native chat input – always fixed at bottom, Enter sends, auto-clears ──
+    prompt = st.chat_input("Message ProcureAI Assistant...")
+
+    # If a chip was clicked, use that as prompt
+    if not prompt and st.session_state.chip_query:
+        prompt = st.session_state.chip_query
+        st.session_state.chip_query = None
+
+    # ── Process message ────────────────────────────────────────────────
+    if prompt:
         st.session_state.chat_history.append({
             'role': 'user',
-            'content': user_input,
+            'content': prompt,
             'timestamp': datetime.now().isoformat()
         })
-        
-        with st.spinner("Processing..."):
-            try:
-                response = st.session_state.orchestrator.process_request(user_input)
-                
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': response,
-                    'timestamp': datetime.now().isoformat()
-                })
-            except Exception as e:
-                error_msg = f"I encountered an error: {str(e)}. Please try again."
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': error_msg,
-                    'timestamp': datetime.now().isoformat()
-                })
-        
+        st.session_state.pending_prompt = prompt
         st.rerun()
 
 elif page == "Inventory Monitor":
-    st.markdown("# Inventory Monitor")
-    st.markdown("Real-time stock levels and replenishment alerts")
+    st.markdown("<h1 style='font-size:32px;font-weight:800;letter-spacing:-0.5px;margin-bottom:0;display:inline-block;background:linear-gradient(90deg,#06D6A0,#2E86AB,#8B5CF6,#06D6A0);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:titleShimmer 4s linear infinite;'>Inventory Monitor</h1><p style='color:#6B7A8E;margin-top:4px;font-size:15px;'>Real-time stock levels and replenishment alerts</p>", unsafe_allow_html=True)
     
     inventory_df = load_inventory_data()
     
@@ -825,8 +2167,7 @@ elif page == "Inventory Monitor":
         st.warning("No inventory data available. Please ensure current_inventory.csv exists in the data folder.")
 
 elif page == "Procurement Pipeline":
-    st.markdown("# Procurement Pipeline")
-    st.markdown("Track RFQs, quotes, and purchase orders")
+    st.markdown("<h1 style='font-size:32px;font-weight:800;letter-spacing:-0.5px;margin-bottom:0;display:inline-block;background:linear-gradient(90deg,#06D6A0,#2E86AB,#8B5CF6,#06D6A0);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:titleShimmer 4s linear infinite;'>Procurement Pipeline</h1><p style='color:#6B7A8E;margin-top:4px;font-size:15px;'>Track RFQs, quotes, and purchase orders</p>", unsafe_allow_html=True)
     
     tab1, tab2, tab3 = st.tabs(["Active RFQs", "Quotes Analysis", "Purchase Orders"])
     
@@ -920,8 +2261,7 @@ elif page == "Procurement Pipeline":
             st.info("No purchase orders found")
 
 elif page == "Document Verification":
-    st.markdown("# Document Verification")
-    st.markdown("Upload and verify delivery notes and invoices")
+    st.markdown("<h1 style='font-size:32px;font-weight:800;letter-spacing:-0.5px;margin-bottom:0;display:inline-block;background:linear-gradient(90deg,#06D6A0,#2E86AB,#8B5CF6,#06D6A0);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:titleShimmer 4s linear infinite;'>Document Verification</h1><p style='color:#6B7A8E;margin-top:4px;font-size:15px;'>Upload and verify delivery notes and invoices</p>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -968,72 +2308,74 @@ elif page == "Document Verification":
         st.info("No verification history available")
 
 elif page == "Configurations":
-    st.markdown("# System Configurations")
-    st.markdown("Configure system parameters and preferences")
+    st.markdown("<h1 style='font-size:32px;font-weight:800;letter-spacing:-0.5px;margin-bottom:0;display:inline-block;background:linear-gradient(90deg,#06D6A0,#2E86AB,#8B5CF6,#06D6A0);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:titleShimmer 4s linear infinite;'>System Configurations</h1><p style='color:#6B7A8E;margin-top:4px;font-size:15px;'>Configure system parameters and preferences</p>", unsafe_allow_html=True)
     
     tab1, tab2, tab3 = st.tabs(["General", "Email Configuration", "Agent Settings"])
     
     with tab1:
-        st.markdown("### General Settings")
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, rgba(6, 214, 160, 0.08) 0%, rgba(15, 23, 42, 0.2) 100%);
+                    border-left: 4px solid #06D6A0; border-radius: 12px; padding: 20px 24px; margin: 12px 0 24px 0;
+                    border: 1px solid rgba(6, 214, 160, 0.15); backdrop-filter: blur(10px);
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);'>
+            <div style='color: #06D6A0; font-size: 17px; font-weight: 800; letter-spacing: 0.3px; margin-bottom: 4px;'>General Settings</div>
+            <div style='color: #8899AA; font-size: 13px; font-weight: 500;'>Company identity and core system preferences</div>
+        </div>
+        """, unsafe_allow_html=True)
         company_name = st.text_input("Company Name", value="Manufacturing Solutions Pvt Ltd")
         company_email = st.text_input("Company Email", value="procurement@company.com")
         test_mode = st.checkbox("Test Mode", value=True, help="Send emails to test addresses instead of actual suppliers")
-        if st.button("Save General Settings"):
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("Save General Settings", type="primary"):
             st.success("Settings saved successfully")
     
     with tab2:
-        st.markdown("### Email Configuration")
-        gmail_user = st.text_input("Gmail Address", type="default")
-        gmail_password = st.text_input("Gmail App Password", type="password")
         st.markdown("""
-        <div class='info-card'>
-            <h4 style='margin: 0; color: #2E86AB;'>Gmail App Password Setup</h4>
-            <p style='margin: 8px 0 0 0; color: #A0A3B1;'>To generate an app password:</p>
-            <ol style='color: #A0A3B1; margin: 8px 0 0 20px;'>
-                <li>Go to your Google Account settings</li>
-                <li>Enable 2-Step Verification</li>
-                <li>Go to Security → App passwords</li>
-                <li>Generate a new app password for Mail</li>
-            </ol>
+        <div style='background: linear-gradient(135deg, rgba(46, 134, 171, 0.08) 0%, rgba(15, 23, 42, 0.2) 100%);
+                    border-left: 4px solid #2E86AB; border-radius: 12px; padding: 20px 24px; margin: 12px 0 24px 0;
+                    border: 1px solid rgba(46, 134, 171, 0.15); backdrop-filter: blur(10px);
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);'>
+            <div style='color: #2E86AB; font-size: 17px; font-weight: 800; letter-spacing: 0.3px; margin-bottom: 4px;'>Email Configuration</div>
+            <div style='color: #8899AA; font-size: 13px; font-weight: 500;'>Gmail integration for automated supplier and agent communication</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Save Email Settings"):
+        gmail_user = st.text_input("Gmail Address", type="default")
+        gmail_password = st.text_input("Gmail App Password", type="password")
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("Save Email Settings", type="primary"):
             st.success("Email settings saved successfully")
     
     with tab3:
-        st.markdown("### Agent Configuration")
-        st.markdown("#### Agent 6 - Decision Maker")
-        always_require_approval = st.checkbox("Always Require Approval", value=True)
-        approval_threshold = st.number_input("Approval Threshold (₹)", value=50000, step=1000)
-        budget_limit = st.number_input("Budget Limit (₹)", value=100000, step=5000)
-        st.markdown("#### Agent 9 - Exception Handler")
-        accept_threshold = st.slider("Accept Threshold (%)", 0.0, 10.0, 2.0, 0.1)
-        reject_threshold = st.slider("Reject Threshold (%)", 5.0, 20.0, 10.0, 0.5)
-        if st.button("Save Agent Settings"):
-            st.success("Agent settings saved successfully")
-    
-    st.markdown("---")
-    st.markdown("### System Information")
-    col1, col2 = st.columns(2)
-    with col1:
         st.markdown("""
-        <div class='info-card'>
-            <div style='color: #A0A3B1; font-size: 12px;'>VERSION</div>
-            <div style='color: #E8E9ED; font-size: 18px; font-weight: 600; margin-top: 4px;'>1.0.0</div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown("""
-        <div class='info-card'>
-            <div style='color: #A0A3B1; font-size: 12px;'>ACTIVE AGENTS</div>
-            <div style='color: #E8E9ED; font-size: 18px; font-weight: 600; margin-top: 4px;'>12/12</div>
+        <div style='background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(15, 23, 42, 0.2) 100%);
+                    border-left: 4px solid #8B5CF6; border-radius: 12px; padding: 20px 24px; margin: 12px 0 24px 0;
+                    border: 1px solid rgba(139, 92, 246, 0.15); backdrop-filter: blur(10px);
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);'>
+            <div style='color: #8B5CF6; font-size: 17px; font-weight: 800; letter-spacing: 0.3px; margin-bottom: 4px;'>Agent Configuration</div>
+            <div style='color: #8899AA; font-size: 13px; font-weight: 500;'>Fine-tune multi-agent decision thresholds and behavioral logic</div>
         </div>
         """, unsafe_allow_html=True)
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #A0A3B1; font-size: 13px; padding: 20px 0;'>
-    Multi-Agent Procurement System
-</div>
-""", unsafe_allow_html=True)
+        st.markdown("<div style='color:#06D6A0;font-size:13px;font-weight:700;letter-spacing:0.5px;padding:12px 0 6px 0;'>AGENT 6 — DECISION MAKER</div>", unsafe_allow_html=True)
+        always_require_approval = st.checkbox("Always Require Approval", value=True)
+        approval_threshold = st.number_input("Approval Threshold (₹)", value=50000, step=1000)
+        budget_limit = st.number_input("Budget Limit (₹)", value=100000, step=5000)
+
+        st.markdown("<div style='height:1px;background:linear-gradient(90deg,transparent,rgba(46,134,171,0.2),transparent);margin:16px 0;'></div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='color:#2E86AB;font-size:13px;font-weight:700;letter-spacing:0.5px;padding:8px 0 6px 0;'>AGENT 9 — EXCEPTION HANDLER</div>", unsafe_allow_html=True)
+        accept_threshold = st.slider("Accept Threshold (%)", 0.0, 10.0, 2.0, 0.1)
+        reject_threshold = st.slider("Reject Threshold (%)", 5.0, 20.0, 10.0, 0.5)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("Save Agent Settings", type="primary"):
+            st.success("Agent settings saved successfully")
+    
+
+# Footer — hidden on Chat Interface to keep it clean
+if page != "Chat Interface":
+    st.markdown("<div style='height:1px;background:linear-gradient(90deg,transparent,rgba(46,134,171,0.15),transparent);margin:24px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='text-align: center; color: #3A4255; font-size: 12px; padding: 12px 0;'>
+        Multi-Agent Procurement System
+    </div>
+    """, unsafe_allow_html=True)

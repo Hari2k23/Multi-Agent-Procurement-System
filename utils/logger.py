@@ -1,8 +1,13 @@
 import sys
 import os
+import atexit
+import warnings
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
+
+# Suppress ResourceWarning for unclosed files in non-critical threads
+warnings.filterwarnings('ignore', category=ResourceWarning)
 
 class OnlyInfo(logging.Filter):
     """Filter that only allows INFO level messages."""
@@ -47,8 +52,20 @@ class Logger:
         self.logger.addHandler(info_handler)
         self.logger.addHandler(error_handler)
         self.logger.propagate = False
- 
+
+        # Ensure handlers are cleanly closed on exit
+        atexit.register(self._close_handlers)
+
         return self.logger
+
+    def _close_handlers(self):
+        """Explicitly close all file handlers to prevent ResourceWarning."""
+        for handler in self.logger.handlers[:]:
+            try:
+                handler.flush()
+                handler.close()
+            except Exception:
+                pass
 
 _logger_instance = Logger()
 logger = _logger_instance.logger
