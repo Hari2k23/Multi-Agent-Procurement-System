@@ -68,6 +68,7 @@ It understands your intent, maintains context across the conversation, and picks
 **Prerequisites**
 - Python 3.9+
 - A Groq API key
+- A Tavily API key
 - A Gmail account with App Password enabled
 
 **Configuration**
@@ -76,6 +77,7 @@ Create a `.env` file in the project root:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
+TAVILY_API_KEY=your_tavily_api_key
 
 GMAIL_USER=your.email@gmail.com
 GMAIL_APP_PASSWORD=your_app_password
