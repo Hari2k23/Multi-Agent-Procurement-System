@@ -9,10 +9,103 @@ from agents.Agent6_decisionMaker import DecisionAgent
 from agents.Agent7_communicationOrchestrator import CommunicationOrchestrator
 from utils.groq_helper import groq
 from utils.logger import log_info, log_error
+from config.settings import GROQ_MODELS
 import json
 import re
 from datetime import datetime
+from difflib import SequenceMatcher
 import pandas as pd             # type: ignore
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  NORMALIZATION & FUZZY MATCHING UTILITIES
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Common aliases that map alternate names to canonical inventory terms
+ITEM_ALIASES = {
+    "nut": "bolt", "nuts": "bolts",
+    "motor oil": "lubricant oil", "engine oil": "lubricant oil",
+    "pcb": "circuit board", "pcbs": "circuit boards",
+    "safety glasses": "safety gloves", "ppe gloves": "safety gloves",
+    "helmet": "hard hat", "helmets": "hard hats",
+    "tape": "adhesive", "glue": "adhesive",
+    "aluminium": "aluminum",  # British vs American spelling
+    "gasket": "rubber gaskets", "gaskets": "rubber gaskets",
+    "oring": "o-rings", "orings": "o-rings", "o ring": "o-rings",
+    "drill": "drill bits", "drills": "drill bits",
+    "wrench": "wrenches", "spanner": "wrenches", "spanners": "wrenches",
+    "cardboard": "cardboard boxes", "boxes": "cardboard boxes",
+    "solvent": "cleaning solvent", "cleaner": "cleaning solvent",
+    "coating": "paint", "primer": "paint",
+    "bubblewrap": "bubble wrap",
+    "screw": "m8 screws", "screws": "m8 screws",
+    "sensor": "sensors",
+    "bearing": "bearings",
+    "gear": "gears",
+}
+
+# Affirmative / negative phrases for state-aware override
+_AFFIRMATIVE = {
+    "yes", "yeah", "yea", "yep", "yup", "sure", "ok", "okay", "k",
+    "kk", "go ahead", "do it", "proceed", "confirm", "absolutely",
+    "of course", "definitely", "please", "lets go", "sounds good",
+    "alright", "right", "cool", "fine", "approved", "approve",
+    "yes please", "go for it", "lets do it", "affirmative",
+    "ya", "yah", "aye", "si",
+}
+_NEGATIVE = {
+    "no", "nah", "nope", "not now", "cancel", "stop", "dont",
+    "skip", "later", "not yet", "negative", "reject", "denied",
+    "no thanks", "not right now", "maybe later", "hold on",
+    "wait", "nay",
+}
+
+
+def _normalize(text: str) -> str:
+    """Normalize text for matching: lowercase, strip punctuation, collapse whitespace."""
+    text = text.lower().strip()
+    # Normalize hyphens and underscores to spaces
+    text = re.sub(r'[-_]+', ' ', text)
+    # Remove all punctuation except alphanumeric and spaces
+    text = re.sub(r'[^a-z0-9\s]', '', text)
+    # Collapse whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _fuzzy_score(a: str, b: str) -> float:
+    """Return similarity ratio between two strings (0.0 – 1.0)."""
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _fuzzy_word_score(query_words: list, target_words: list) -> float:
+    """Score how well query words match target words, allowing per-word fuzzy."""
+    if not query_words or not target_words:
+        return 0.0
+    total = 0.0
+    matched = 0
+    for qw in query_words:
+        best = max((_fuzzy_score(qw, tw) for tw in target_words), default=0.0)
+        if best >= 0.65:  # per-word threshold
+            total += best
+            matched += 1
+    if matched == 0:
+        return 0.0
+    # Reward matching more words of the target
+    coverage = matched / max(len(target_words), len(query_words))
+    return (total / matched) * 0.6 + coverage * 0.4
+
+
+def _is_affirmative(text: str) -> bool:
+    """Check if text is an affirmative response."""
+    norm = _normalize(text)
+    return norm in _AFFIRMATIVE or any(norm.startswith(a) for a in _AFFIRMATIVE if len(a) > 2)
+
+
+def _is_negative(text: str) -> bool:
+    """Check if text is a negative response."""
+    norm = _normalize(text)
+    return norm in _NEGATIVE or any(norm.startswith(n) for n in _NEGATIVE if len(n) > 2)
+
 
 
 class MasterOrchestrator(BaseAgent):
@@ -41,147 +134,257 @@ class MasterOrchestrator(BaseAgent):
         self.rfq_sent = False
         self.collected_quotes = []
         self.pending_po_data = None
+        self.conversation_history = []  # Track last N exchanges for context
        
         self.pending_rfqs_file = os.path.join(project_root, 'data', 'pending_rfqs.json')
 
     def process_request(self, user_input: str) -> str:
         """Process user request by classifying intent and routing to appropriate handler."""
         log_info(f"Processing: {user_input}", self.name)
-       
-        intent = self._classify_user_intent(user_input)
+
+        # Track conversation history for context
+        self.conversation_history.append({"role": "user", "content": user_input})
+        if len(self.conversation_history) > 12:  # keep last 6 exchanges (12 messages)
+            self.conversation_history = self.conversation_history[-12:]
+
+        # ── STATE-AWARE DETERMINISTIC OVERRIDE ──────────────────────────────
+        override_intent = self._state_aware_override(user_input)
+        if override_intent:
+            log_info(f"State override -> {override_intent['type']}", self.name)
+            intent = override_intent
+        else:
+            intent = self._classify_user_intent(user_input)
+        
         log_info(f"Detected intent: {intent['type']}", self.name)
        
-        if intent['type'] == 'new_demand_check':
+        if intent['type'] == 'full_inventory_check':
             self._reset_state()
-            return self._handle_demand_check(user_input)
+            response = self._handle_full_inventory_check()
+       
+        elif intent['type'] == 'new_demand_check':
+            self._reset_state()
+            response = self._handle_demand_check(user_input)
        
         elif intent['type'] == 'find_suppliers_for_item':
             item_name = intent.get('item_name')
-            return self._handle_supplier_request(user_input, item_name)
+            response = self._handle_supplier_request(user_input, item_name)
        
         elif intent['type'] == 'show_pending_rfqs':
-            return self._show_pending_rfqs()
+            response = self._show_pending_rfqs()
        
         elif intent['type'] == 'resume_rfq':
             item_identifier = intent.get('item_identifier')
             if not item_identifier:
-                return "I have pending RFQs saved. Could you tell me which one you'd like to continue? You can mention the item name, item code, or when you created it."
-            return self._resume_rfq(item_identifier)
+                self.state = "awaiting_rfq_selection"
+                response = "I have pending RFQs saved. Could you tell me which one you'd like to continue? You can mention the item name, item code, or when you created it."
+            else:
+                response = self._resume_rfq(item_identifier)
        
         elif intent['type'] == 'help':
-            return self._show_help()
+            response = self._show_help()
        
         elif intent['type'] == 'supplier_approval':
             if self.state == "awaiting_supplier_approval":
                 if intent.get('response') == 'yes':
-                    return self._find_suppliers()
+                    response = self._find_suppliers()
                 else:
                     self._reset_state()
-                    return "Alright, no problem. Just let me know when you need something."
+                    response = "Alright, no problem. Just let me know when you need something."
             else:
-                return "I'm not sure what you're referring to. Would you like to check an item's inventory status?"
+                response = "I'm not sure what you're referring to. Would you like to check an item's inventory status?"
        
         elif intent['type'] == 'rfq_intent':
             if self.state == "awaiting_rfq_approval":
-                return self._handle_rfq_intent(user_input, intent)
+                response = self._handle_rfq_intent(user_input, intent)
             else:
-                return "I'm not currently waiting for RFQ instructions. Would you like to check an item's status?"
+                response = "I'm not currently waiting for RFQ instructions. Would you like to check an item's status?"
        
         elif intent['type'] == 'quote_submission':
-            return self._handle_quote_submission(user_input)
+            response = self._handle_quote_submission(user_input)
        
         elif intent['type'] == 'analyze_quotes':
-            return self._handle_analyze_quotes()
+            response = self._handle_analyze_quotes()
        
         elif intent['type'] == 'po_approval':
             if self.state == "awaiting_po_approval":
-                return self._handle_po_approval(intent)
+                response = self._handle_po_approval(intent)
             else:
-                return "I'm not currently waiting for PO approval. Would you like to check an item's status?"
+                response = "I'm not currently waiting for PO approval. Would you like to check an item's status?"
        
         elif intent['type'] == 'notification_query':
-            return self._handle_notification_query(user_input)
+            response = self._handle_notification_query(user_input)
        
         elif intent['type'] == 'inbox_check':
-            return self._handle_inbox_check(user_input)
+            response = self._handle_inbox_check(user_input)
        
-        elif intent['type'] == 'acknowledgment':
-            return self._handle_acknowledgment()
-       
-        elif intent['type'] == 'unclear':
-            return self._handle_unclear_intent()
+        elif intent['type'] in ('acknowledgment', 'unclear'):
+            response = self._handle_acknowledgment(user_input)
        
         else:
-            return "I didn't understand that. Type 'help' to see what I can do."
+            response = self._handle_acknowledgment(user_input)
+
+        # Attach smart pills if the response does not already have them
+        response = self._attach_pills(response)
+
+        # Track assistant response in history
+        self.conversation_history.append({"role": "assistant", "content": response.split('===')[0].strip()[:200]})
+        if len(self.conversation_history) > 12:
+            self.conversation_history = self.conversation_history[-12:]
+
+        return response
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  STATE-AWARE DETERMINISTIC OVERRIDE
+    # ══════════════════════════════════════════════════════════════════════
+
+    def _state_aware_override(self, user_input: str) -> dict | None:
+        """Override intent classification based on conversation state."""
+        norm = _normalize(user_input)
+        is_short = len(norm.split()) <= 5
+
+        # Keyword shortcut: "help" always goes to help handler
+        if norm.strip() in ("help", "help me", "what can you do"):
+            return {"type": "help"}
+
+        if self.state == "awaiting_supplier_approval" and is_short:
+            if _is_affirmative(norm):
+                return {"type": "supplier_approval", "response": "yes"}
+            if _is_negative(norm):
+                return {"type": "supplier_approval", "response": "no"}
+
+        if self.state == "awaiting_rfq_approval" and is_short:
+            if _is_affirmative(norm):
+                return {"type": "rfq_intent"}
+            if _is_negative(norm):
+                return {"type": "rfq_intent"}
+
+        if self.state == "awaiting_po_approval" and is_short:
+            if _is_affirmative(norm):
+                return {"type": "po_approval", "response": "yes"}
+            if _is_negative(norm):
+                return {"type": "po_approval", "response": "no"}
+
+        # When pending RFQs were just shown and user mentions an item name or
+        # says "resume this", "continue that", "this one" etc. → route to resume_rfq
+        if self.state == "awaiting_rfq_selection":
+            # If user declines, reset state instead of matching as RFQ
+            if _is_negative(norm):
+                self.state = "idle"
+                return {"type": "acknowledgment"}
+            # Pronouns / demonstratives that refer to what was just shown
+            if any(w in norm for w in ["this", "that", "it", "resume", "continue", "first", "last", "one"]):
+                # Try to resolve from pending RFQs - use the latest/only one
+                return {"type": "resume_rfq", "item_identifier": user_input}
+            # If user just typed an item name without command words, also route to resume
+            if is_short and not any(w in norm for w in ["check", "status", "find", "show", "help", "pending"]):
+                return {"type": "resume_rfq", "item_identifier": user_input}
+
+        return None
 
     def _classify_user_intent(self, user_input: str) -> dict:
         """Use LLM to classify user intent from natural language."""
-       
-        prompt = f"""You are analyzing user input in a procurement conversation system. Classify the user's intent.
-Current conversation state: {self.state}
-Current item being discussed: {self.last_item_name if self.last_item_name else "None"}
-User said: "{user_input}"
-Classify into ONE of these intents and return ONLY a JSON object:
-1. "new_demand_check" - User wants to check inventory/order status for an item
-   Examples: "check M8 screws", "status of electric motors", "do we need bearings"
-   Return: {{"type": "new_demand_check"}}
-2. "find_suppliers_for_item" - User explicitly asks to find/get suppliers for a SPECIFIC item
-   Examples: "get suppliers for M8 screws", "find suppliers for electric motors"
-   Return: {{"type": "find_suppliers_for_item", "item_name": "extracted item name"}}
-3. "show_pending_rfqs" - User wants to see saved/pending RFQs
-   Examples: "show pending rfqs", "list saved orders"
-   Return: {{"type": "show_pending_rfqs"}}
-4. "resume_rfq" - User wants to continue a saved RFQ
-   Examples: "continue M8 screws RFQ", "resume bearings order"
-   Return: {{"type": "resume_rfq", "item_identifier": "item name or code or date reference"}}
-5. "supplier_approval" - User responding yes/no to supplier search question
-   Examples: "yes", "yeah", "sure", "no", "nope", "not now"
-   Return: {{"type": "supplier_approval", "response": "yes" or "no"}}
-6. "rfq_intent" - User responding to RFQ approval (send/wait/cancel with filters)
-   Examples: "yes send to all", "only low risk", "wait for now"
-   Return: {{"type": "rfq_intent"}}
-7. "quote_submission" - User submitting quotes OR informing about received quotes (NOT analyzing)
-   Examples: "received quotes", "I got a quote from supplier", pasting quote text with pricing details
-   Return: {{"type": "quote_submission"}}
-8. "analyze_quotes" - User wants to ANALYZE/COMPARE collected quotes NOW
-   Examples: "analyze quotes", "compare quotes", "done", "ready to compare", "analyse quotes", "let's see", "what do we have", "show me the quotes"
-   Return: {{"type": "analyze_quotes"}}
-9. "po_approval" - User responding to purchase order approval question
-   Examples: "yes approve", "no reject", "confirm", "proceed"
-   Return: {{"type": "po_approval", "response": "yes" or "no"}}
-10. "notification_query" - User asking about sent notifications or notification history
-    Examples: "what notifications did you send", "show recent alerts", "notification history"
-    Return: {{"type": "notification_query"}}
-11. "inbox_check" - User asking to check inbox or about supplier emails
-    Examples: "check inbox", "any mails from suppliers", "did we get quotes", "any new emails"
-    Return: {{"type": "inbox_check"}}
-12. "acknowledgment" - User providing simple acknowledgment or casual response
-    Examples: "okay", "ok", "alright", "got it", "thanks"
-    Return: {{"type": "acknowledgment"}}
-13. "help" - User asking for help or guidance
-    Examples: "help", "what can you do"
-    Return: {{"type": "help"}}
-14. "unclear" - Cannot determine intent
-    Return: {{"type": "unclear"}}
-CRITICAL RULES:
-- "analyze", "analyse", "compare", "done", "let's see", "what do we have", "ready", "show me" (when talking about quotes) → ALWAYS "analyze_quotes"
-- "I got quote" (informing) → "quote_submission"
-- Pasting quote data with prices → "quote_submission"
-- "check inbox" → "inbox_check"
-- Simple "ok", "thanks" → "acknowledgment"
-Return ONLY the JSON object, no explanation."""
+
+        # Build a compact inventory list so the LLM is aware of actual items
+        inv_list = self._get_inventory_names_for_prompt()
+
+        # Build conversation context (last 4 messages)
+        recent_context = ""
+        if self.conversation_history:
+            recent = self.conversation_history[-4:]  # last 2 exchanges
+            recent_context = "\n".join(
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+                for m in recent
+            )
+
+        prompt = f"""You are an intent classifier for a procurement assistant chatbot.
+
+SYSTEM STATE: {self.state}
+ITEM IN CONTEXT: {self.last_item_name or 'None'}
+INVENTORY ITEMS: {inv_list}
+
+RECENT CONVERSATION:
+{recent_context}
+
+CURRENT USER MESSAGE: "{user_input}"
+
+Classify the user's intent into EXACTLY ONE of the types below.
+Return ONLY a valid JSON object — no explanation, no markdown.
+
+INTENT TYPES:
+1. "new_demand_check" — check inventory / stock / order status for a SPECIFIC item (user mentions an item name)
+   → {{"type": "new_demand_check"}}
+1b. "full_inventory_check" — check the ENTIRE inventory / full stock report / what needs to be ordered (NO specific item mentioned)
+    → {{"type": "full_inventory_check"}}
+2. "find_suppliers_for_item" — explicitly find or get suppliers for a SPECIFIC item
+   → {{"type": "find_suppliers_for_item", "item_name": "<item>"}}
+3. "show_pending_rfqs" — view saved / pending RFQs
+   → {{"type": "show_pending_rfqs"}}
+4. "resume_rfq" — continue a saved RFQ
+   → {{"type": "resume_rfq", "item_identifier": "<item or code or date>"}}
+5. "supplier_approval" — yes/no to "shall I find suppliers?"
+   → {{"type": "supplier_approval", "response": "yes" or "no"}}
+6. "rfq_intent" — response to RFQ send/wait/cancel
+   → {{"type": "rfq_intent"}}
+7. "quote_submission" — submitting or informing about received quotes (NOT analyzing)
+   → {{"type": "quote_submission"}}
+8. "analyze_quotes" — analyze / compare / review collected quotes
+   → {{"type": "analyze_quotes"}}
+9. "po_approval" — approve or reject a purchase order
+   → {{"type": "po_approval", "response": "yes" or "no"}}
+10. "notification_query" — asking about sent notifications
+    → {{"type": "notification_query"}}
+11. "inbox_check" — check inbox for supplier emails / replies
+    → {{"type": "inbox_check"}}
+12. "acknowledgment" — simple acknowledgment (ok, thanks, got it) when NOT awaiting a decision
+    → {{"type": "acknowledgment"}}
+13. "help" — asking for help or guidance
+    → {{"type": "help"}}
+14. "unclear" — truly cannot determine intent
+    → {{"type": "unclear"}}
+
+══════════════════ PRIORITY RULES (MUST OBEY) ══════════════════
+• STATE OVERRIDES:
+  – If state is "awaiting_supplier_approval" and user says yes/no/ok/sure → "supplier_approval", NOT "acknowledgment"
+  – If state is "awaiting_rfq_approval" and user says yes/send/ok/sure → "rfq_intent", NOT "acknowledgment"
+  – If state is "awaiting_po_approval" and user says yes/approve/ok/sure → "po_approval", NOT "acknowledgment"
+  – ONLY classify as "acknowledgment" when state is "idle" or no decision pending
+
+• KEYWORD OVERRIDES:
+  – "analyze", "analyse", "compare", "done", "let's see", "ready", "show me" (about quotes) → "analyze_quotes"
+  – "I got quote", "received quote", pasting price data → "quote_submission"
+  – "check inbox", "any emails", "did suppliers reply" → "inbox_check"
+  – Checking / status for a SPECIFIC item (name mentioned) → "new_demand_check"
+  – "check the inventory", "full inventory", "stock report", "what needs ordering", "scan inventory", "inventory overview" (NO specific item) → "full_inventory_check"
+  – "find suppliers", "get suppliers", "where to buy" → "find_suppliers_for_item"
+  – "show rfqs", "pending orders", "saved rfqs" → "show_pending_rfqs"
+  – "resume", "continue" + item → "resume_rfq"
+
+• DISAMBIGUATION: "check inventory" vs "check M8 screws":
+  – If user mentions a specific item name → "new_demand_check"
+  – If user says "check inventory" / "check all items" generically → "full_inventory_check"
+
+• CONVERSATION CONTEXT:
+  – If user says "this", "it", "that one" → refer to conversation history to determine the item/intent
+  – If state is "awaiting_rfq_selection" and user says an item name → "resume_rfq"
+  – If user refers to a recently discussed item with a pronoun → use ITEM IN CONTEXT
+
+• TYPO TOLERANCE: User may misspell item names. Match to closest inventory item.
+
+Return ONLY the JSON object."""
         try:
             response = groq.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
+                temperature=0.05,
                 max_tokens=200
             )
            
             result_text = response.choices[0].message.content.strip()
            
-            if result_text.startswith('```json'):
-                result_text = result_text.replace('```json', '').replace('```', '').strip()
+            # Strip markdown fences if present
+            if result_text.startswith('```'):
+                result_text = re.sub(r'^```(?:json)?\s*', '', result_text)
+                result_text = re.sub(r'\s*```$', '', result_text)
            
             intent = json.loads(result_text)
             return intent
@@ -189,6 +392,17 @@ Return ONLY the JSON object, no explanation."""
         except Exception as e:
             log_error(f"Intent classification failed: {e}", self.name)
             return {"type": "unclear"}
+
+    def _get_inventory_names_for_prompt(self) -> str:
+        """Return a compact comma-separated list of inventory item names for LLM context."""
+        try:
+            inv = self.load_csv('current_inventory.csv')
+            if inv.empty:
+                return "(inventory unavailable)"
+            names = inv['item_name'].tolist()
+            return ", ".join(names)
+        except Exception:
+            return "(inventory unavailable)"
 
     def _handle_demand_check(self, user_input: str) -> str:
         """Handle new demand check request."""
@@ -218,6 +432,7 @@ Return ONLY the JSON object, no explanation."""
 **Justification**:
 {rec.reason}
 
+
 ---
 {question}
 
@@ -225,6 +440,71 @@ Return ONLY the JSON object, no explanation."""
 Yes, find me suppliers
 No, not right now
 Check a different item"""
+
+    def _handle_full_inventory_check(self) -> str:
+        """Scan ALL inventory items and report which ones need procurement."""
+        from agents.Agent2_stockMonitor import StockMonitor
+
+        log_info("Running full inventory scan", self.name)
+
+        try:
+            monitor = StockMonitor()
+            low_stock_items = monitor.check_all_low_stock_items()
+
+            # Also count total items for the summary
+            inv_df = self.load_csv('current_inventory.csv')
+            total_items = len(inv_df) if not inv_df.empty else 0
+
+            if not low_stock_items:
+                return f"""### Full Inventory Scan Complete
+
+All **{total_items}** items are at adequate stock levels. No procurement action needed right now!
+
+===
+Check a specific item
+Show pending RFQs
+Help"""
+
+            # Group by urgency
+            urgent = [s for s in low_stock_items if s.priority == "URGENT"]
+            high = [s for s in low_stock_items if s.priority == "HIGH"]
+            medium = [s for s in low_stock_items if s.priority == "MEDIUM"]
+            adequate_count = total_items - len(low_stock_items)
+
+            output = f"""### Full Inventory Scan Complete
+
+**{len(low_stock_items)}** of **{total_items}** items need attention — **{adequate_count}** items are at healthy levels.
+
+"""
+            if urgent:
+                output += "**URGENT - Immediate Procurement Required:**\n"
+                for s in urgent:
+                    output += f"- **{s.item_name}** ({s.item_code}): {s.current_quantity} units (reorder at {s.reorder_point}) - {s.status}\n"
+                output += "\n"
+
+            if high:
+                output += "**HIGH PRIORITY - Order Soon:**\n"
+                for s in high:
+                    output += f"- **{s.item_name}** ({s.item_code}): {s.current_quantity} units (reorder at {s.reorder_point})\n"
+                output += "\n"
+
+            if medium:
+                output += "**MEDIUM - Plan Ahead:**\n"
+                for s in medium:
+                    output += f"- **{s.item_name}** ({s.item_code}): {s.current_quantity} units (reorder at {s.reorder_point})\n"
+                output += "\n"
+
+            # Suggest the most urgent item for action
+            top_item = (urgent or high or medium)[0]
+            output += f"---\nI'd recommend starting with **{top_item.item_name}**. Would you like me to check it in detail?"
+
+            output += f"\n\n===\nCheck {top_item.item_name} in detail\nShow pending RFQs\nHelp"
+
+            return output
+
+        except Exception as e:
+            log_error(f"Full inventory check failed: {e}", self.name)
+            return "I encountered an error while scanning the inventory. Please try again."
 
     def _handle_supplier_request(self, user_input: str, suggested_item_name: str = None) -> str:
         """Handle explicit supplier search request for a specific item."""
@@ -536,6 +816,9 @@ You can resume this later by mentioning {item_display_name} again, or ask me to 
                 output += f" Created: {rfq['created_at']}\n\n"
            
             output += "To resume any of these, just mention the item name and I'll help you continue."
+
+            # Set state so the next message with an item name routes to resume_rfq
+            self.state = "awaiting_rfq_selection"
            
             return output
            
@@ -559,36 +842,59 @@ You can resume this later by mentioning {item_display_name} again, or ask me to 
             matched_rfq = None
             matched_id = None
            
-            item_identifier_lower = item_identifier.lower()
-            item_identifier_clean = item_identifier_lower.replace('rfq', '').replace('order', '').replace('the', '').strip()
-           
-            search_words = [w for w in item_identifier_clean.split() if len(w) > 2]
+            id_norm = _normalize(item_identifier)
+            id_words = id_norm.replace('rfq', '').replace('order', '').replace('the', '').split()
+            id_words = [w for w in id_words if len(w) > 1]
+
+            # Detect pronoun-only input: "this", "that", "it", "first one", "last one"
+            pronoun_words = {"this", "that", "it", "one", "resume", "continue", "first", "last"}
+            meaningful_words = [w for w in id_words if w not in pronoun_words]
+            is_pronoun_only = len(meaningful_words) == 0
+
+            # If pronoun-only and only 1 pending RFQ, auto-select it
+            if is_pronoun_only and len(pending_rfqs) == 1:
+                rfq_id, rfq = next(iter(pending_rfqs.items()))
+                matched_rfq = rfq
+                matched_id = rfq_id
+            elif is_pronoun_only and len(pending_rfqs) > 1:
+                # Pick the most recent one
+                most_recent_id = max(pending_rfqs.keys(), key=lambda k: pending_rfqs[k].get('created_at', ''))
+                matched_rfq = pending_rfqs[most_recent_id]
+                matched_id = most_recent_id
+
+            best_score = 0.0
            
             for rfq_id, rfq in pending_rfqs.items():
-                item_name_lower = rfq['item_name'].lower()
+                item_name_norm = _normalize(rfq['item_name'])
                 item_code_lower = rfq['item_code'].lower()
                 created_date = rfq['created_at'].split()[0]
                
-                if search_words and any(word in item_name_lower for word in search_words):
+                # Exact word match
+                if id_words and any(word in item_name_norm for word in id_words):
                     matched_rfq = rfq
                     matched_id = rfq_id
                     break
                
-                if item_code_lower[:4] in item_identifier_lower or item_identifier_lower in item_code_lower:
+                # Item code match
+                if item_code_lower[:4] in id_norm or id_norm in item_code_lower:
                     matched_rfq = rfq
                     matched_id = rfq_id
                     break
                
-                if item_identifier_lower in created_date.lower():
+                # Date match
+                if id_norm in created_date.lower():
                     matched_rfq = rfq
                     matched_id = rfq_id
                     break
-               
-                item_name_words = [w for w in item_name_lower.split() if len(w) > 2]
-                if item_name_words and any(word in item_identifier_lower for word in item_name_words):
+
+                # Fuzzy match on item name
+                score = _fuzzy_score(id_norm, item_name_norm)
+                word_score = _fuzzy_word_score(id_words, item_name_norm.split()) if id_words else 0
+                combined = max(score, word_score)
+                if combined > best_score and combined >= 0.55:
+                    best_score = combined
                     matched_rfq = rfq
                     matched_id = rfq_id
-                    break
            
             if not matched_rfq:
                 return f"I couldn't find a pending RFQ matching '{item_identifier}'. Would you like to see all pending orders?"
@@ -725,6 +1031,9 @@ If information is missing, use null for optional fields, 'Not specified' for pay
             for supplier_email, supplier_data in quotes_data.items():
                 for quote in supplier_data['quotes']:
                     quote['contact_email'] = supplier_email
+                    # Inject supplier_name from parent if not in individual quote
+                    if 'supplier_name' not in quote:
+                        quote['supplier_name'] = supplier_data.get('supplier_name', 'Unknown')
                     # Add backward compatibility for quality_score/risk_score
                     if 'risk_score' not in quote and 'quality_score' in quote:
                         quote['risk_score'] = quote['quality_score']
@@ -968,53 +1277,135 @@ Generate ONLY the question text."""
             self._reset_state()
             return f"Purchase Order {po_number} rejected and logged."
 
-    def _handle_acknowledgment(self) -> str:
-        """Handle casual acknowledgments with context-aware follow-up suggestions."""
-        import random
-        responses = [
-            "Sure thing! Anything else I can help with?",
-            "Got it. Let me know if you need anything.",
-            "Alright! Just holler if you need me.",
-            "No problem. I'm here when you need me.",
-            "Sounds good. What else can I do for you?",
-        ]
-        body = random.choice(responses)
+    def _handle_acknowledgment(self, user_input: str = "") -> str:
+        """Handle casual conversation with a natural LLM response."""
+        try:
+            history_text = ""
+            if self.conversation_history:
+                recent = self.conversation_history[-4:]
+                history_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in recent)
 
-        # Context-aware suggestions shown as followup pills
-        if self.state == "awaiting_supplier_approval" and self.last_item_name:
-            suggestions = [
-                f"Yes, find suppliers for {self.last_item_name}",
-                "Show me pending RFQs",
+            system_msg = (
+                "You are ProcureAI, a smart and friendly procurement assistant for a manufacturing company. "
+                "You handle inventory checks, supplier discovery, RFQ generation, quote analysis, and purchase orders. "
+                "When the user sends a casual or conversational message (greetings, small talk, questions about you), "
+                "respond warmly and naturally like a helpful colleague would. Keep it to 1-2 sentences. "
+                "Do not use emojis or special symbols. Do not be robotic or overly formal. "
+                "If appropriate, gently steer toward what you can help with, but do not force it."
+            )
+
+            user_msg = ""
+            if history_text:
+                user_msg += f"Recent conversation:\n{history_text}\n\n"
+            user_msg += f"User says: {user_input}"
+
+            response = groq.client.chat.completions.create(
+                model=GROQ_MODELS["quick"],
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}
+                ],
+                temperature=0.8,
+                max_tokens=120
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            log_error(f"Chat conversation error: {e}", self.name)
+            return "Sounds good. What else can I do for you?"
+
+    # ==================================================================
+    #  SMART PILLS SYSTEM
+    # ==================================================================
+
+    def _get_smart_pills(self) -> list:
+        """Generate 3 smart follow-up pills based on current state and context.
+        Returns [relevant_1, relevant_2, flow_switch].
+        """
+        item = self.last_item_name
+
+        if self.state == "awaiting_supplier_approval" and item:
+            return [
+                f"Yes, find suppliers for {item}",
+                "No, not right now",
+                "Check the inventory",
+            ]
+
+        if self.state == "awaiting_rfq_approval" and item:
+            return [
+                "Send RFQs to all suppliers",
+                "Save this RFQ for later",
                 "Check a different item",
             ]
-        elif self.state == "awaiting_rfq_approval" and self.last_item_name:
-            suggestions = [
-                f"Send RFQs to all suppliers",
-                f"Send only to low risk suppliers",
-                "Save this RFQ for later",
-            ]
-        elif self.state in ("awaiting_quotes", "quotes_collected"):
-            suggestions = [
-                "Check inbox for quotes",
-                "Analyze quotes now",
+
+        if self.state == "awaiting_rfq_selection":
+            # Try to get item names from pending RFQs for the first pill
+            first_rfq_name = None
+            try:
+                if os.path.exists(self.pending_rfqs_file):
+                    with open(self.pending_rfqs_file, 'r') as f:
+                        rfqs = json.load(f)
+                    if rfqs:
+                        first_rfq = next(iter(rfqs.values()))
+                        first_rfq_name = first_rfq.get('item_name')
+            except Exception:
+                pass
+            if first_rfq_name:
+                return [
+                    f"Resume {first_rfq_name}",
+                    "Show pending RFQs",
+                    "Check the inventory",
+                ]
+            return [
+                "Resume this RFQ",
                 "Show pending RFQs",
+                "Check the inventory",
             ]
-        else:
-            suggestions = [
-                "Check inventory status",
-                "Find suppliers for an item",
+
+        if self.state in ("awaiting_quotes", "quotes_collected"):
+            return [
+                "Check inbox for quotes",
+                "Analyze quotes",
                 "Show pending RFQs",
             ]
 
-        pills_text = "\n".join(suggestions)
-        return f"{body}\n\n===\n{pills_text}"
+        if self.state == "awaiting_po_approval":
+            return [
+                "Yes, approve",
+                "No, reject",
+                "Check the inventory",
+            ]
+
+        # idle / default - provide general actions
+        if item:
+            return [
+                f"Find suppliers for {item}",
+                "Check the inventory",
+                "Show pending RFQs",
+            ]
+
+        return [
+            "Check the inventory",
+            "Show pending RFQs",
+            "Help",
+        ]
+
+    def _attach_pills(self, response: str) -> str:
+        """Attach smart pills to any response that doesn't already have them."""
+        if '===' in response:
+            return response  # pills already present
+        pills = self._get_smart_pills()
+        pills_text = "\n".join(pills)
+        return f"{response}\n\n===\n{pills_text}"
 
     def _show_help(self) -> str:
         """Display help message"""
         return """I'm your Procurement Assistant! Here's what I can do:
 
-Check Inventory & Order Status:
- Just ask about any item naturally - I'll analyze if we need to order
+Full Inventory Scan:
+ Say "check the inventory" and I'll scan all items and tell you what needs procurement
+
+Check Specific Item Status:
+ Ask about any item naturally - I'll analyze if we need to order it
 
 Find Suppliers:
  Ask me to find suppliers for any item and I'll search for the best options
@@ -1036,9 +1427,7 @@ View Notifications:
 
 Just talk naturally - I understand conversational language and will figure out what you need!"""
 
-    def _handle_unclear_intent(self) -> str:
-        """Handle unclear user input"""
-        return "I didn't quite catch that. You can ask me to check an item's status, find suppliers, check inbox for quotes, or show pending orders. What would you like to do?"
+
 
     def _reset_state(self):
         """Reset conversation state for new flow"""
@@ -1053,21 +1442,118 @@ Just talk naturally - I understand conversational language and will figure out w
         log_info("State reset - ready for new conversation", self.name)
 
     def _extract_item(self, text: str):
-        """Extract item code from user input by matching with inventory"""
+        """Extract item code using multi-strategy matching: exact → normalized → fuzzy → LLM."""
         try:
             inventory_df = self.load_csv('current_inventory.csv')
-           
-            text_lower = text.lower()
-           
+            if inventory_df.empty:
+                return None
+
+            text_norm = _normalize(text)
+            text_words = text_norm.split()
+
+            # ── Strategy 0: Check for item-code mention (e.g. ITM001) ──────
+            code_match = re.search(r'itm\s*0*(\d+)', text_norm)
+            if code_match:
+                candidate = f"ITM{int(code_match.group(1)):03d}"
+                if candidate in inventory_df['item_code'].values:
+                    return candidate
+
+            # ── Strategy 1: Alias expansion ────────────────────────────────
+            for alias, canonical in ITEM_ALIASES.items():
+                if alias in text_norm:
+                    # Try exact match with canonical name
+                    for _, row in inventory_df.iterrows():
+                        if _normalize(row['item_name']) == _normalize(canonical):
+                            return row['item_code']
+                        # Also partial match
+                        if _normalize(canonical) in _normalize(row['item_name']):
+                            return row['item_code']
+
+            # ── Strategy 2: Exact substring match (fast path) ──────────────
             for _, row in inventory_df.iterrows():
-                item_name_lower = row['item_name'].lower()
-                words = item_name_lower.split()
-                if any(word in text_lower for word in words if len(word) > 3):
+                item_norm = _normalize(row['item_name'])
+                # Full name match
+                if item_norm in text_norm or text_norm in item_norm:
                     return row['item_code']
-           
-            return None
+
+            # ── Strategy 3: Word-level exact match ─────────────────────────
+            for _, row in inventory_df.iterrows():
+                item_norm = _normalize(row['item_name'])
+                item_words = item_norm.split()
+                # Any word > 3 chars that appears in user text
+                if any(w in text_norm for w in item_words if len(w) > 3):
+                    return row['item_code']
+
+            # ── Strategy 4: Fuzzy matching (score all, pick best) ──────────
+            best_code = None
+            best_score = 0.0
+
+            for _, row in inventory_df.iterrows():
+                item_norm = _normalize(row['item_name'])
+                item_words = item_norm.split()
+
+                # Full-string fuzzy
+                full_score = _fuzzy_score(text_norm, item_norm)
+
+                # Word-level fuzzy
+                word_score = _fuzzy_word_score(text_words, item_words)
+
+                # Also try each user word against the full item name
+                per_word_best = 0.0
+                for tw in text_words:
+                    if len(tw) > 2:
+                        for iw in item_words:
+                            s = _fuzzy_score(tw, iw)
+                            if s > per_word_best:
+                                per_word_best = s
+
+                score = max(full_score, word_score, per_word_best * 0.85)
+
+                if score > best_score:
+                    best_score = score
+                    best_code = row['item_code']
+
+            if best_score >= 0.60 and best_code:
+                log_info(f"Fuzzy matched '{text}' → {best_code} (score={best_score:.2f})", self.name)
+                return best_code
+
+            # ── Strategy 5: LLM fallback ───────────────────────────────────
+            return self._llm_extract_item(text, inventory_df)
+
         except Exception as e:
             log_error(f"Failed to extract item: {e}", self.name)
+            return None
+
+    def _llm_extract_item(self, text: str, inventory_df) -> str | None:
+        """Use LLM as final fallback to match user text to an inventory item."""
+        try:
+            items_list = "\n".join(
+                f"- {row['item_code']}: {row['item_name']}"
+                for _, row in inventory_df.iterrows()
+            )
+            prompt = f"""Given the user's message and the inventory list below, identify which inventory item the user is referring to.
+If the user misspelled the item name, use your best judgement to find the closest match.
+If no item matches at all, return "NONE".
+
+User message: "{text}"
+
+Inventory:
+{items_list}
+
+Return ONLY the item_code (e.g. ITM001) or "NONE". No explanation."""
+            response = groq.client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=20
+            )
+            result = response.choices[0].message.content.strip().upper()
+            if result.startswith("ITM") and result in inventory_df['item_code'].values:
+                log_info(f"LLM fallback matched '{text}' → {result}", self.name)
+                return result
+            return None
+        except Exception as e:
+            log_error(f"LLM item extraction failed: {e}", self.name)
             return None
 
     def _get_item_category(self, item_code: str) -> str:

@@ -5,15 +5,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.base_agent import BaseAgent
 from utils.groq_helper import groq
 from utils.logger import log_info, log_error
-try:
-    from ddgs import DDGS  # type: ignore  # new package name
-except ImportError:
-    from duckduckgo_search import DDGS  # type: ignore  # legacy fallback
+from dotenv import load_dotenv
+from tavily import TavilyClient
 import requests
 from bs4 import BeautifulSoup
 import json
 import time
 import re
+
+load_dotenv()
 
 class SupplierDiscovery(BaseAgent):
     """Find suppliers via web search, scrape websites, and assess quality."""
@@ -25,7 +25,7 @@ class SupplierDiscovery(BaseAgent):
             goal="Find reliable suppliers and assess their risk level",
             backstory="Expert at finding and evaluating suppliers using web research"
         )
-        self.ddg = DDGS()
+        self.tavily = TavilyClient(api_key=os.environ.get('TAVILY_API_KEY'))
     
     def execute(self, item_code: str, item_name: str, location: str = "India", top_n: int = 5):
         """Search suppliers, scrape websites, and assess quality."""
@@ -73,27 +73,30 @@ class SupplierDiscovery(BaseAgent):
         }
     
     def _search_web(self, query: str, max_results: int = 15):
-        """Search DuckDuckGo for suppliers with fallback for testing connectivity."""
+        """Search Tavily for suppliers with fallback for testing connectivity."""
         try:
             log_info(f"Searching: {query}", self.name)
-            results = list(self.ddg.text(query, max_results=max_results))
-            
-            # If search returns 0, try a secondary query or provide restricted fallback for testing
+            response = self.tavily.search(query=query, max_results=max_results)
+            raw_results = response.get('results', [])
+
+            # Transform Tavily results into the structure expected downstream
+            results = [{'title': r.get('title', ''), 'href': r.get('url', '')} for r in raw_results]
+
             if not results:
                 log_info("Initial search returned 0 results. Retrying with simpler query...", self.name)
                 simpler_query = " ".join(query.split()[:2])
-                results = list(self.ddg.text(simpler_query, max_results=max_results))
-            
+                response = self.tavily.search(query=simpler_query, max_results=max_results)
+                raw_results = response.get('results', [])
+                results = [{'title': r.get('title', ''), 'href': r.get('url', '')} for r in raw_results]
+
             if not results:
-                # Fallback for when DDG is blocked/rate-limited in test environment
-                # This allows the rest of the agent flow (scraping, scoring) to be validated
                 log_info("Search engine unavailable. Using restricted fallback list for verification.", self.name)
                 results = [
                     {'title': 'Grainger Industrial Supply', 'href': 'https://www.grainger.com'},
                     {'title': 'McMaster-Carr', 'href': 'https://www.mcmaster.com'},
                     {'title': 'TATA Steel', 'href': 'https://www.tatasteel.com'}
                 ]
-            
+
             log_info(f"Found {len(results)} search results", self.name)
             return results
         except Exception as e:

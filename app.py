@@ -20,10 +20,7 @@ _signal_mod.signal = _safe_signal
 
 # ── 3. Suppress all noisy warnings from third-party libs ────────────────────
 warnings.filterwarnings('ignore', module='statsmodels.*')        # catches ValueWarning/FutureWarning/UserWarning
-warnings.filterwarnings('ignore', module='duckduckgo_search.*')  # package rename RuntimeWarning
-warnings.filterwarnings('ignore', message='.*duckduckgo.*')      # belt-and-suspenders
 warnings.filterwarnings('ignore', category=ResourceWarning)
-warnings.filterwarnings('ignore', message='.*renamed to.*ddgs.*')
 warnings.filterwarnings('ignore', message='.*date index.*frequency.*')
 warnings.filterwarnings('ignore', message='.*No supported index.*')
 try:
@@ -765,56 +762,97 @@ st.markdown("""
     }
     .chat-active-header {
         position: sticky;
-        top: 0;
+        top: 14px;
         z-index: 9999;
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 12px;
-        padding: 10px 0 16px 0;
-        margin-bottom: 10px;
-        margin-left: -1cm;
-        background: transparent !important;
-        backdrop-filter: none !important;
-        animation: headerSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+        gap: 14px;
+        padding: 14px 34px 14px 22px;
+        margin-bottom: 24px;
+        margin-left: 20px;
+        background: linear-gradient(145deg, rgba(12, 18, 46, 0.92) 0%, rgba(18, 30, 60, 0.88) 100%) !important;
+        backdrop-filter: blur(24px) saturate(1.5) !important;
+        border: 1.2px solid rgba(46, 134, 171, 0.28);
+        border-radius: 60px;
+        box-shadow:
+            0 6px 28px rgba(0, 0, 0, 0.35),
+            0 0 0 1px rgba(46, 134, 171, 0.10),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        animation: headerSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+                   headerBreath 4s ease-in-out 0.5s infinite;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .chat-active-header:hover {
+        transform: translateY(-2px);
+        border-color: rgba(46, 134, 171, 0.45);
+        box-shadow:
+            0 10px 40px rgba(0, 0, 0, 0.40),
+            0 0 24px rgba(46, 134, 171, 0.15),
+            0 0 0 1px rgba(46, 134, 171, 0.20),
+            inset 0 1px 0 rgba(255, 255, 255, 0.07);
     }
 
     @keyframes headerSlideIn {
-        from { opacity: 0; transform: translateY(-12px); }
-        to   { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes headerBreath {
+        0%, 100% {
+            box-shadow:
+                0 6px 28px rgba(0, 0, 0, 0.35),
+                0 0 0 1px rgba(46, 134, 171, 0.10),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        50% {
+            box-shadow:
+                0 6px 28px rgba(0, 0, 0, 0.35),
+                0 0 20px rgba(46, 134, 171, 0.10),
+                0 0 0 1px rgba(46, 134, 171, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
     }
 
     .chat-header-bolt {
-        font-size: 34px;
+        font-size: 30px;
         line-height: 1;
         flex-shrink: 0;
         filter:
-            drop-shadow(0 0 10px rgba(255,160,0,1))
-            drop-shadow(0 0 24px rgba(255,110,0,0.85))
-            drop-shadow(0 0 50px rgba(255,80,0,0.5));
+            drop-shadow(0 0 8px rgba(255,160,0,0.9))
+            drop-shadow(0 0 20px rgba(255,110,0,0.7));
         animation: headerBoltPulse 2.8s ease-in-out infinite;
     }
 
     @keyframes headerBoltPulse {
         0%, 100% {
             filter:
-                drop-shadow(0 0 10px rgba(255,160,0,1))
-                drop-shadow(0 0 24px rgba(255,110,0,0.85))
-                drop-shadow(0 0 50px rgba(255,80,0,0.5));
+                drop-shadow(0 0 8px rgba(255,160,0,0.9))
+                drop-shadow(0 0 20px rgba(255,110,0,0.7));
         }
         50% {
             filter:
-                drop-shadow(0 0 18px rgba(255,190,0,1))
-                drop-shadow(0 0 42px rgba(255,140,0,1))
-                drop-shadow(0 0 90px rgba(255,100,0,0.7));
+                drop-shadow(0 0 14px rgba(255,180,0,1))
+                drop-shadow(0 0 36px rgba(255,130,0,0.85));
         }
     }
 
     .chat-header-name {
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
-        color: #E2EAF4;
-        letter-spacing: -0.3px;
+        background: linear-gradient(135deg, #ffffff 0%, #7DD3FC 40%, #06D6A0 80%, #7DD3FC 100%);
+        background-size: 300% 300%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.2px;
         line-height: 1;
+        animation: headerGradientShift 6s ease-in-out infinite;
+    }
+
+    @keyframes headerGradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
     }
 
     /* Spacer so messages dont hide behind fixed input */
@@ -1871,16 +1909,16 @@ elif page == "Chat Interface":
                 st.session_state.chip_query = "Check current inventory levels"
                 st.rerun()
         with cc2:
-            if st.button("Find suppliers", key="chip_sup"):
-                st.session_state.chip_query = "Find suppliers for our items"
-                st.rerun()
-        with cc3:
             if st.button("Show pending RFQs", key="chip_rfq"):
                 st.session_state.chip_query = "Show all pending RFQs"
                 st.rerun()
+        with cc3:
+            if st.button("Check inbox", key="chip_qt"):
+                st.session_state.chip_query = "Check inbox for quotes"
+                st.rerun()
         with cc4:
-            if st.button("Analyze quotes", key="chip_qt"):
-                st.session_state.chip_query = "Analyze collected quotes"
+            if st.button("Help", key="chip_help"):
+                st.session_state.chip_query = "Help"
                 st.rerun()
     else:
         # ── Glowing mini header ────────────────────────────────────────────
@@ -2184,7 +2222,7 @@ elif page == "Procurement Pipeline":
                     with col1:
                         st.markdown(f"**Item Code:** {rfq_data.get('item_code', 'N/A')}")
                         st.markdown(f"**Quantity:** {rfq_data.get('quantity', 0)}")
-                        st.markdown(f"**Created:** {rfq_data.get('timestamp', 'N/A')}")
+                        st.markdown(f"**Created:** {rfq_data.get('created_at', rfq_data.get('timestamp', 'N/A'))}")
                     
                     with col2:
                         st.markdown(f"**Suppliers:** {len(rfq_data.get('suppliers', []))}")

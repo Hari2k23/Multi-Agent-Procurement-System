@@ -5,5 +5,19 @@
     "subject": "Quote",
     "item_code": null,
     "email_type": "quote"
+  },
+  "198": {
+    "supplier_email": "NextGen <nextgen.components1@gmail.com>",
+    "processed_at": "2026-03-02 20:35:36",
+    "subject": "RE: RFQ for M8 Screws",
+    "item_code": "ITM013",
+    "email_type": "quote"
+  },
+  "199": {
+    "supplier_email": "Pioneer <pioneer.machineparts@gmail.com>",
+    "processed_at": "2026-03-02 20:35:57",
+    "subject": "Drill Bits Quote",
+    "item_code": "ITM013",
+    "email_type": "quote"
   }
 }

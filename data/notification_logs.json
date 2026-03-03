@@ -691,5 +691,38 @@
     "subject": "Purchase Order Approved - PO-ITM001-20260215_185228",
     "status": "sent",
     "error_message": null
+  },
+  "rfq_sent_20260301_191134": {
+    "notification_id": "rfq_sent_20260301_191134",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-03-01 19:11:34",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - Hard Hats",
+    "status": "sent",
+    "error_message": null
+  },
+  "rfq_sent_20260302_203251": {
+    "notification_id": "rfq_sent_20260302_203251",
+    "event_type": "rfq_sent",
+    "sent_at": "2026-03-02 20:32:51",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "RFQ Sent - Drill Bits",
+    "status": "sent",
+    "error_message": null
+  },
+  "quote_received_20260302_203543": {
+    "notification_id": "quote_received_20260302_203543",
+    "event_type": "quote_received",
+    "sent_at": "2026-03-02 20:35:43",
+    "recipients": [
+      "717822i216@kce.ac.in"
+    ],
+    "subject": "New Quote Received - Drill Bits",
+    "status": "sent",
+    "error_message": null
   }
 }
